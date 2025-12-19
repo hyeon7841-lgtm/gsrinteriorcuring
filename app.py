@@ -50,9 +50,19 @@ st.subheader("🧱 1단계: 내부공간 정의")
 if not st.session_state.space_closed:
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        x = st.number_input("X 좌표", value=0.0, step=0.5)
+        x = st.number_input(
+    "X 좌표 (m)",
+    value=0.000,
+    step=0.001,
+    format="%.3f"
+)
     with col2:
-        y = st.number_input("Y 좌표", value=0.0, step=0.5)
+        y = st.number_input(
+    "Y 좌표 (m)",
+    value=0.000,
+    step=0.001,
+    format="%.3f"
+)
     with col3:
         if st.button("➕ 선 추가"):
             st.session_state.space_points.append((x, y))
@@ -139,9 +149,19 @@ if st.session_state.space_closed:
         hx, hy = st.session_state.temp_heater
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            hx = st.number_input("X", value=float(hx), step=0.1)
+            hx = st.number_input(
+    "열풍기 X 위치 (m)",
+    value=float(hx),
+    step=0.001,
+    format="%.3f"
+)
         with col2:
-            hy = st.number_input("Y", value=float(hy), step=0.1)
+            hy = st.number_input(
+    "열풍기 Y 위치 (m)",
+    value=float(hy),
+    step=0.001,
+    format="%.3f"
+)
         with col3:
             if st.button("🔥 위치 확정"):
                 if point_in_polygon(hx, hy, st.session_state.space_points):
