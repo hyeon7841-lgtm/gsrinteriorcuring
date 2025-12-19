@@ -128,27 +128,37 @@ def point_in_polygon(x, y, poly):
 # 2단계: 열풍기 배치
 # =====================================
 if st.session_state.space_closed:
-    st.subheader("🔥 2단계: 열풍기 배치 (클릭 + 좌표 미세조정)")
+    st.subheader("🔥 2단계: 열풍기 배치 (클릭 → 미세조정 → 확정)")
 
+    # 🔹 확정된 열풍기 되돌리기
+    colu1, colu2 = st.columns([1, 4])
+    with colu1:
+        if st.button("⬅ 이전 열풍기 되돌리기"):
+            if st.session_state.heater_points:
+                st.session_state.heater_points.pop()
+                st.rerun()
+
+    # 🔹 Plot 클릭
     clicked = plotly_events(fig, click_event=True)
 
     if clicked:
         st.session_state.temp_heater = (
-            round(clicked[0]["x"], 2),
-            round(clicked[0]["y"], 2)
+            float(clicked[0]["x"]),
+            float(clicked[0]["y"])
         )
 
+    # 🔹 임시 열풍기 좌표 조정
     if st.session_state.temp_heater:
         hx, hy = st.session_state.temp_heater
 
-        col1, col2, col3 = st.columns([1, 1, 2])
+        col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
         with col1:
             hx = st.number_input("열풍기 X 좌표", value=float(hx), step=0.1)
         with col2:
             hy = st.number_input("열풍기 Y 좌표", value=float(hy), step=0.1)
 
         with col3:
-            if st.button("🔥 열풍기 위치 확정"):
+            if st.button("🔥 위치 확정"):
                 if point_in_polygon(hx, hy, st.session_state.space_points):
                     if len(st.session_state.heater_points) < heater_count:
                         st.session_state.heater_points.append((hx, hy))
@@ -156,3 +166,8 @@ if st.session_state.space_closed:
                         st.rerun()
                 else:
                     st.warning("공간 내부에만 배치할 수 있습니다.")
+
+        with col4:
+            if st.button("❌ 임시 위치 취소"):
+                st.session_state.temp_heater = None
+                st.rerun()
