@@ -23,7 +23,11 @@ def reset_all():
 
 if "step" not in st.session_state:
     reset_all()
+if "df_result" not in st.session_state:
+    st.session_state.df_result = None
 
+if "html_result" not in st.session_state:
+    st.session_state.html_result = None
 # ======================================================
 # 사이드바
 # ======================================================
