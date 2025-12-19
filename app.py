@@ -203,6 +203,64 @@ if st.session_state.step == 3:
         st.session_state.df_result = df
 
         st.line_chart(df.set_index("시간(h)"))
+# ======================================================
+# 시간 드래그용 Heatmap (30분 간격)
+# ======================================================
+st.markdown("### ⏱ 시간별 열 분포 직접 확인 (30분 간격)")
+
+total_minutes = len(T_hist) * 60
+time_min = st.slider(
+    "시간 선택 (분)",
+    min_value=0,
+    max_value=total_minutes - 60,
+    step=30,
+    value=0
+)
+
+t_idx = time_min // 60
+T_sel = T_hist[t_idx].copy()
+T_sel[~mask] = np.nan
+
+fig_drag = go.Figure()
+
+fig_drag.add_trace(go.Heatmap(
+    z=T_sel,
+    x=x,
+    y=y,
+    zmin=-10,
+    zmax=40,
+    colorscale="Turbo",
+    colorbar=dict(title="°C")
+))
+
+hx, hy = zip(*st.session_state.heater_points)
+fig_drag.add_trace(go.Scatter(
+    x=hx,
+    y=hy,
+    mode="markers+text",
+    marker=dict(size=14, color="red"),
+    text=[f"🔥{i+1}" for i in range(len(hx))],
+    textposition="top center"
+))
+
+wind = np.deg2rad(20)
+arrow = 0.2 * (x.max() - x.min())
+
+for px, py in st.session_state.heater_points:
+    fig_drag.add_trace(go.Scatter(
+        x=[px, px + arrow*np.cos(wind)],
+        y=[py, py + arrow*np.sin(wind)],
+        mode="lines",
+        line=dict(width=3, color="black"),
+        showlegend=False
+    ))
+
+fig_drag.update_layout(
+    title=f"{t_idx}시간 ({time_min}분) 시점 열 분포",
+    yaxis=dict(scaleanchor="x", scaleratio=1)
+)
+
+st.plotly_chart(fig_drag, use_container_width=True)
 
         frames = []
         wind = np.deg2rad(20)
