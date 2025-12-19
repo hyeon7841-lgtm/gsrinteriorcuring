@@ -129,14 +129,20 @@ st.plotly_chart(fig, use_container_width=True)
 if st.session_state.space_closed:
     st.subheader("🔥 2단계: 열풍기 배치")
 
+    st.info(
+        f"현재 {len(st.session_state.heater_points)} / {heater_count} 개 배치됨"
+    )
+
     clicked = plotly_events(fig, click_event=True)
 
-    if clicked:
+    # 클릭 시 임시 열풍기 생성
+    if clicked and st.session_state.temp_heater is None:
         st.session_state.temp_heater = (
             round(float(clicked[0]["x"]), 3),
             round(float(clicked[0]["y"]), 3)
         )
 
+    # 좌표 입력 UI
     if st.session_state.temp_heater is not None:
         hx, hy = st.session_state.temp_heater
 
@@ -162,16 +168,25 @@ if st.session_state.space_closed:
 
         with c3:
             if st.button("🔥 위치 확정"):
-                if point_in_polygon(hx, hy, st.session_state.space_points):
-                    if len(st.session_state.heater_points) < heater_count:
-                        st.session_state.heater_points.append((hx, hy))
-                        st.session_state.temp_heater = None
-                        st.session_state.pop("heater_x", None)
-                        st.session_state.pop("heater_y", None)
-                        st.rerun()
+                if not point_in_polygon(hx, hy, st.session_state.space_points):
+                    st.error("❌ 열풍기는 내부공간 안에 있어야 합니다.")
                 else:
-                    st.error("❌ 열풍기는 반드시 내부 공간에 배치해야 합니다.")
+                    st.session_state.heater_points.append((hx, hy))
+                    st.session_state.temp_heater = None
+                    st.session_state.pop("heater_x", None)
+                    st.session_state.pop("heater_y", None)
+                    st.rerun()
 
+    # 이전 단계 (열풍기 되돌리기)
+    if st.session_state.heater_points:
+        if st.button("⬅ 이전 열풍기 삭제"):
+            st.session_state.heater_points.pop()
+            st.session_state.temp_heater = None
+            st.rerun()
+
+    # 배치 완료 안내
+    if len(st.session_state.heater_points) == heater_count:
+        st.success("✅ 모든 열풍기 배치 완료")
 
 # ======================================================
 # 열해석
