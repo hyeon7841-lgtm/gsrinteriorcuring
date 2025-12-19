@@ -1,213 +1,263 @@
 import streamlit as st
 import numpy as np
-import plotly.graph_objects as go
 import pandas as pd
-import plotly.io as pio
+import plotly.graph_objects as go
+from matplotlib.path import Path
 
 # ======================================================
 # 기본 설정
 # ======================================================
-st.set_page_config(layout="wide")
-st.title("🔥 내부공간 열풍기 난방 시뮬레이터")
+st.set_page_config(page_title="난방 시뮬레이터", layout="wide")
 
 # ======================================================
-# 세션 초기화
+# 세션 상태 초기화
 # ======================================================
 def reset_all():
     st.session_state.step = 1
     st.session_state.space_points = [(0.0, 0.0)]
     st.session_state.heater_points = []
+    st.session_state.heater_count = 1
+    st.session_state.heat_result = None
+    st.session_state.df_result = None
+    st.session_state.html_result = None
+
+def clear_simulation_result():
     st.session_state.heat_result = None
     st.session_state.df_result = None
     st.session_state.html_result = None
 
 if "step" not in st.session_state:
     reset_all()
-if "df_result" not in st.session_state:
-    st.session_state.df_result = None
-
-if "html_result" not in st.session_state:
-    st.session_state.html_result = None
-# ======================================================
-# 사이드바
-# ======================================================
-st.sidebar.header("공통 설정")
-
-if st.sidebar.button("🔄 전체 초기화"):
-    reset_all()
-    st.rerun()
-
-heater_count = st.sidebar.selectbox("열풍기 개수", [1, 2])
-ceiling_height = st.sidebar.number_input("천장 높이 (m)", 2.0, 15.0, 4.0)
-wall_type = st.sidebar.selectbox("벽체 재질", ["조적벽", "콘크리트벽", "샌드위치판넬"])
-
-U_map = {"조적벽": 1.2, "콘크리트벽": 1.7, "샌드위치판넬": 0.25}
-U = U_map[wall_type]
-
-T_inside0, T_outside = 10.0, -5.0
 
 # ======================================================
-# 내부 판별
+# 열해석 함수 (단순 확산 모델)
 # ======================================================
-def point_in_polygon(x, y, poly):
-    inside = False
-    j = len(poly) - 1
-    for i in range(len(poly)):
-        xi, yi = poly[i]
-        xj, yj = poly[j]
-        if ((yi > y) != (yj > y)) and (x < (xj-xi)*(y-yi)/(yj-yi+1e-9)+xi):
-            inside = not inside
-        j = i
-    return inside
+def run_heat_simulation(space_pts, heater_pts):
+    pts = np.array(space_pts)
+    xmin, ymin = pts.min(axis=0)
+    xmax, ymax = pts.max(axis=0)
+
+    nx, ny = 50, 50
+    x = np.linspace(xmin, xmax, nx)
+    y = np.linspace(ymin, ymax, ny)
+    X, Y = np.meshgrid(x, y)
+
+    poly = Path(space_pts)
+    mask = poly.contains_points(
+        np.vstack((X.flatten(), Y.flatten())).T
+    ).reshape(X.shape)
+
+    T = np.full_like(X, 10.0)  # 초기 내부온도 10℃
+    T_hist = []
+
+    alpha = 0.15
+    dt = 1.0
+    hours = 9
+
+    for _ in range(hours + 1):
+        Tn = T.copy()
+
+        for i in range(1, nx - 1):
+            for j in range(1, ny - 1):
+                if not mask[j, i]:
+                    continue
+                Tn[j, i] += alpha * (
+                    T[j+1, i] + T[j-1, i] +
+                    T[j, i+1] + T[j, i-1] -
+                    4*T[j, i]
+                )
+
+        for hx, hy in heater_pts:
+            ix = np.argmin(np.abs(x - hx))
+            iy = np.argmin(np.abs(y - hy))
+            Tn[iy, ix] += 5.0
+
+        T = np.clip(Tn, -10, 40)
+        T_hist.append(T.copy())
+
+    return T_hist, x, y, X, Y, mask
+
+# ======================================================
+# UI 시작
+# ======================================================
+st.title("🔥 난방 시뮬레이터")
+
+st.button("🔄 전체 초기화", on_click=reset_all)
 
 # ======================================================
 # 1단계: 공간 정의
 # ======================================================
 if st.session_state.step == 1:
-    st.subheader("🧱 1단계: 내부공간 정의 (m)")
-    x = st.number_input("X 좌표", step=0.001, format="%.3f")
-    y = st.number_input("Y 좌표", step=0.001, format="%.3f")
+    st.subheader("1️⃣ 공간 좌표 입력 (단위: m)")
 
-    if st.button("➕ 선 추가"):
+    x = st.number_input("다음 X 좌표 (m)", step=0.001, format="%.3f")
+    y = st.number_input("다음 Y 좌표 (m)", step=0.001, format="%.3f")
+
+    if st.button("➕ 좌표 추가"):
         st.session_state.space_points.append((x, y))
-        st.rerun()
 
-    if len(st.session_state.space_points) > 1 and st.button("⬅ 이전 점 삭제"):
-        st.session_state.space_points.pop()
-        st.rerun()
+    if len(st.session_state.space_points) > 2:
+        if st.button("✔ 공간 완성"):
+            st.session_state.step = 2
+            st.rerun()
 
-    if len(st.session_state.space_points) >= 3 and st.button("✅ 공간 완성"):
-        st.session_state.space_points.append((0.0, 0.0))
-        st.session_state.step = 2
-        st.rerun()
-
+    fig = go.Figure()
     xs, ys = zip(*st.session_state.space_points)
-    fig = go.Figure(go.Scatter(x=xs, y=ys, mode="lines+markers"))
-    fig.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers"))
+    fig.update_layout(
+        yaxis=dict(scaleanchor="x", scaleratio=1),
+        title="현재 공간 형상"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # ======================================================
-# 2단계: 열풍기 입력
+# 2단계: 열풍기 배치
 # ======================================================
 if st.session_state.step == 2:
-    st.subheader("🔥 2단계: 열풍기 좌표 입력")
+    st.subheader("2️⃣ 열풍기 배치")
 
     if st.button("⬅ 1단계로 돌아가기"):
+        clear_simulation_result()
+        st.session_state.heater_points = []
         st.session_state.step = 1
         st.rerun()
 
+    st.session_state.heater_count = st.radio(
+        "열풍기 개수", [1, 2], horizontal=True
+    )
+
     heaters = []
-    for i in range(heater_count):
-        hx = st.number_input(f"열풍기{i+1} X", step=0.001, format="%.3f", key=f"hx{i}")
-        hy = st.number_input(f"열풍기{i+1} Y", step=0.001, format="%.3f", key=f"hy{i}")
+    for i in range(st.session_state.heater_count):
+        st.markdown(f"**열풍기 {i+1} 좌표**")
+        hx = st.number_input(
+            f"X{i+1} (m)", step=0.001, format="%.3f", key=f"hx{i}"
+        )
+        hy = st.number_input(
+            f"Y{i+1} (m)", step=0.001, format="%.3f", key=f"hy{i}"
+        )
         heaters.append((hx, hy))
 
+    fig = go.Figure()
     xs, ys = zip(*st.session_state.space_points)
-    fig2 = go.Figure(go.Scatter(x=xs, y=ys, mode="lines"))
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines"))
     if heaters:
         hx, hy = zip(*heaters)
-        fig2.add_trace(go.Scatter(x=hx, y=hy, mode="markers", marker=dict(size=12)))
-    fig2.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
-    st.plotly_chart(fig2, use_container_width=True)
+        fig.add_trace(go.Scatter(
+            x=hx, y=hy,
+            mode="markers+text",
+            marker=dict(size=12, color="red"),
+            text=[f"🔥{i+1}" for i in range(len(hx))],
+            textposition="top center"
+        ))
+    fig.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
+    st.plotly_chart(fig, use_container_width=True)
 
-    if st.button("🔥 위치 확정"):
-        for hx, hy in heaters:
-            if not point_in_polygon(hx, hy, st.session_state.space_points):
-                st.error("❌ 열풍기가 내부 공간 밖에 있습니다.")
-                break
-        else:
-            st.session_state.heater_points = heaters
-            st.session_state.step = 3
-            st.rerun()
-
-# ======================================================
-# 열해석
-# ======================================================
-def run_heat_sim(space, heaters):
-    nx, ny = 60, 40
-    x = np.linspace(min(p[0] for p in space), max(p[0] for p in space), nx)
-    y = np.linspace(min(p[1] for p in space), max(p[1] for p in space), ny)
-    X, Y = np.meshgrid(x, y)
-
-    mask = np.zeros((ny, nx), bool)
-    for i in range(nx):
-        for j in range(ny):
-            mask[j, i] = point_in_polygon(X[j, i], Y[j, i], space)
-
-    T = np.ones((ny, nx)) * T_inside0
-    hist = [T.copy()]
-
-    for _ in range(9):
-        Tn = T.copy()
-        for hx, hy in heaters:
-            ix = np.argmin(abs(x-hx))
-            iy = np.argmin(abs(y-hy))
-            Tn[iy, ix] += 5
-        T = Tn
-        hist.append(T.copy())
-
-    return hist, x, y, X, Y, mask
+    if st.button("➡ 3단계로 이동"):
+        st.session_state.heater_points = heaters
+        st.session_state.step = 3
+        st.rerun()
 
 # ======================================================
-# 3단계: 결과 + 다운로드
+# 3단계: 열해석 결과
 # ======================================================
 if st.session_state.step == 3:
-    st.subheader("🌡️ 3단계: 결과")
+    st.subheader("3️⃣ 시뮬레이션 결과")
 
-    if st.button("🧮 시뮬레이션 실행"):
-        T_hist, x, y, X, Y, mask = run_heat_sim(
-            st.session_state.space_points,
-            st.session_state.heater_points
-        )
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅ 2단계로 돌아가기"):
+            clear_simulation_result()
+            st.session_state.step = 2
+            st.rerun()
+    with col2:
+        if st.button("⬅⬅ 1단계로 돌아가기"):
+            clear_simulation_result()
+            st.session_state.heater_points = []
+            st.session_state.step = 1
+            st.rerun()
+
+    if st.button("🧮 열해석 실행"):
+        with st.spinner("계산 중..."):
+            result = run_heat_simulation(
+                st.session_state.space_points,
+                st.session_state.heater_points
+            )
+            st.session_state.heat_result = result
+
+    if st.session_state.heat_result is not None:
+        T_hist, x, y, X, Y, mask = st.session_state.heat_result
 
         rows = []
-        for t, Th in enumerate(T_hist):
-            Th2 = Th.copy()
-            Th2[~mask] = np.nan
+        for t, T in enumerate(T_hist):
+            T2 = T.copy()
+            T2[~mask] = np.nan
             rows.append({
                 "시간(h)": t,
-                "중심부 평균온도": np.nanmean(Th2),
-                "모서리 평균온도": np.nanmean([Th2[0,0], Th2[0,-1], Th2[-1,0], Th2[-1,-1]])
+                "중심부 평균온도(°C)": np.nanmean(T2),
+                "모서리 평균온도(°C)": np.nanmean([
+                    T2[0,0], T2[0,-1], T2[-1,0], T2[-1,-1]
+                ])
             })
 
         df = pd.DataFrame(rows)
         st.session_state.df_result = df
 
+        st.line_chart(df.set_index("시간(h)"))
+
         frames = []
-        for t, Th in enumerate(T_hist):
-            Th2 = Th.copy()
-            Th2[~mask] = np.nan
-            frames.append(go.Frame(
-                data=[go.Heatmap(z=Th2, x=x, y=y, zmin=-10, zmax=40)],
-                name=str(t)
+        wind = np.deg2rad(20)
+        arrow = 0.2*(x.max()-x.min())
+
+        for t, T in enumerate(T_hist):
+            T2 = T.copy()
+            T2[~mask] = np.nan
+
+            data = [
+                go.Heatmap(
+                    z=T2, x=x, y=y,
+                    zmin=-10, zmax=40,
+                    colorscale="Turbo"
+                )
+            ]
+
+            hx, hy = zip(*st.session_state.heater_points)
+            data.append(go.Scatter(
+                x=hx, y=hy,
+                mode="markers+text",
+                marker=dict(size=14, color="red"),
+                text=["🔥"]*len(hx)
             ))
+
+            for px, py in st.session_state.heater_points:
+                data.append(go.Scatter(
+                    x=[px, px+arrow*np.cos(wind)],
+                    y=[py, py+arrow*np.sin(wind)],
+                    mode="lines",
+                    line=dict(width=3, color="black"),
+                    showlegend=False
+                ))
+
+            frames.append(go.Frame(data=data, name=str(t)))
 
         fig = go.Figure(data=frames[0].data, frames=frames)
         fig.update_layout(
             yaxis=dict(scaleanchor="x", scaleratio=1),
-            updatemenus=[{"type": "buttons",
-                          "buttons": [{"label": "▶ 재생", "method": "animate", "args": [None]}]}]
+            updatemenus=[{
+                "type": "buttons",
+                "buttons": [{"label": "▶ 재생", "method": "animate", "args": [None]}]
+            }]
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        st.session_state.html_result = pio.to_html(fig, full_html=True)
-
-    # -------------------------
-    # 다운로드 영역
-    # -------------------------
-    if st.session_state.df_result is not None:
         st.download_button(
-            "📥 CSV 다운로드",
-            st.session_state.df_result.to_csv(index=False).encode("utf-8-sig"),
-            file_name="heating_result.csv",
-            mime="text/csv"
+            "⬇ CSV 다운로드",
+            df.to_csv(index=False),
+            file_name="simulation_result.csv"
         )
 
-    if st.session_state.html_result is not None:
         st.download_button(
-            "📥 시뮬레이션 HTML 다운로드",
-            st.session_state.html_result.encode("utf-8"),
-            file_name="heating_simulation.html",
-            mime="text/html"
+            "⬇ HTML 다운로드",
+            fig.to_html(),
+            file_name="heatmap_animation.html"
         )
