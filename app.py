@@ -129,7 +129,6 @@ st.plotly_chart(fig, use_container_width=True)
 if st.session_state.step == 2:
     st.subheader("🔥 2단계: 열풍기 좌표 입력 (단위: m)")
 
-    # 돌아가기
     if st.button("⬅ 1단계로 돌아가기"):
         st.session_state.step = 1
         st.session_state.heater_points = []
@@ -169,6 +168,7 @@ if st.session_state.step == 2:
             st.session_state.heater_points = heaters
             st.session_state.step = 3
             st.rerun()
+
 
 # ======================================================
 # 열해석
