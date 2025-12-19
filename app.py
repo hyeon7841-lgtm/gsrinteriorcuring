@@ -68,7 +68,10 @@ NX, NY = 100, 60
 
 fig = go.Figure()
 
-xs, ys = zip(*st.session_state.space_points)
+if len(st.session_state.space_points) >= 1:
+    xs, ys = zip(*st.session_state.space_points)
+else:
+    xs, ys = [], []
 
 fig.add_trace(
     go.Scatter(
