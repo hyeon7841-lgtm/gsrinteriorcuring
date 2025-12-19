@@ -35,7 +35,7 @@ if "click_count" not in st.session_state:
 if reset_btn:
     st.session_state.heater_points = []
     st.session_state.click_count = 0
-    st.experimental_rerun()
+    st.rerun()
 
 # =====================================
 # 격자 & 물리 상수
@@ -96,7 +96,7 @@ if clicked and st.session_state.click_count < heater_count:
     y = int(clicked[0]["y"])
     st.session_state.heater_points.append((x, y))
     st.session_state.click_count += 1
-    st.experimental_rerun()
+    st.rerun()
 
 st.info(f"선택된 열풍기 위치: {st.session_state.heater_points}")
 
