@@ -219,32 +219,23 @@ if st.session_state.heater_points:
 
     if st.button("🧮 열해석 계산 실행"):
         with st.spinner("계산 중..."):
-            ...
-
-
-    if st.button("🧮 열해석 계산 실행"):
-    with st.spinner("계산 중..."):
-        result = run_heat_simulation(
-            st.session_state.space_points,
-            st.session_state.heater_points
-        )
-        st.session_state.heat_result = result
-        result = run_heat_simulation(
-            st.session_state.space_points,
-            st.session_state.heater_points
-        )
-        st.session_state.heat_result = result
+            result = run_heat_simulation(
+                st.session_state.space_points,
+                st.session_state.heater_points
+            )
+            st.session_state.heat_result = result
 
     if st.session_state.heat_result:
         if (
-    st.session_state.heat_result is not None and
-    isinstance(st.session_state.heat_result, tuple) and
-    len(st.session_state.heat_result) == 6
-):
-    T_hist, x, y, X, Y, mask = st.session_state.heat_result
-else:
-    st.error("열해석 결과가 올바르지 않습니다. 다시 계산을 실행해주세요.")
-    st.stop()
+            st.session_state.heat_result is not None and
+            isinstance(st.session_state.heat_result, tuple) and
+            len(st.session_state.heat_result) == 6
+        ):
+            T_hist, x, y, X, Y, mask = st.session_state.heat_result
+        else:
+            st.error("열해석 결과가 올바르지 않습니다. 다시 계산을 실행해주세요.")
+            st.stop()
+
 
         rows = []
         cx = (x.min()+x.max())/2
