@@ -126,67 +126,49 @@ st.plotly_chart(fig, use_container_width=True)
 # ======================================================
 # 2단계: 열풍기 배치
 # ======================================================
-if st.session_state.space_closed:
-    st.subheader("🔥 2단계: 열풍기 배치")
+if st.session_state.step == 2:
+    st.subheader("🔥 2단계: 열풍기 좌표 입력 (단위: m)")
 
-    st.info(
-        f"현재 {len(st.session_state.heater_points)} / {heater_count} 개 배치됨"
-    )
+    # 돌아가기
+    if st.button("⬅ 1단계로 돌아가기"):
+        st.session_state.step = 1
+        st.session_state.heater_points = []
+        st.session_state.heat_result = None
+        st.rerun()
 
-    clicked = plotly_events(fig, click_event=True)
+    heaters = []
 
-    # 클릭 시 임시 열풍기 생성
-    if clicked and st.session_state.temp_heater is None:
-        st.session_state.temp_heater = (
-            round(float(clicked[0]["x"]), 3),
-            round(float(clicked[0]["y"]), 3)
+    for i in range(heater_count):
+        st.markdown(f"### 🔥 열풍기 #{i+1}")
+
+        hx = st.number_input(
+            f"X 좌표 (m) - 열풍기 {i+1}",
+            step=0.001,
+            format="%.3f",
+            key=f"hx_{i}"
+        )
+        hy = st.number_input(
+            f"Y 좌표 (m) - 열풍기 {i+1}",
+            step=0.001,
+            format="%.3f",
+            key=f"hy_{i}"
         )
 
-    # 좌표 입력 UI
-    if st.session_state.temp_heater is not None:
-        hx, hy = st.session_state.temp_heater
+        heaters.append((hx, hy))
 
-        c1, c2, c3 = st.columns([1, 1, 2])
+    if st.button("🔥 열풍기 위치 확정"):
+        invalid = False
+        for hx, hy in heaters:
+            if not point_in_polygon(hx, hy, st.session_state.space_points):
+                invalid = True
+                break
 
-        with c1:
-            hx = st.number_input(
-                "열풍기 X 좌표 (m)",
-                value=float(hx),
-                step=0.001,
-                format="%.3f",
-                key="heater_x"
-            )
-
-        with c2:
-            hy = st.number_input(
-                "열풍기 Y 좌표 (m)",
-                value=float(hy),
-                step=0.001,
-                format="%.3f",
-                key="heater_y"
-            )
-
-        with c3:
-            if st.button("🔥 위치 확정"):
-                if not point_in_polygon(hx, hy, st.session_state.space_points):
-                    st.error("❌ 열풍기는 내부공간 안에 있어야 합니다.")
-                else:
-                    st.session_state.heater_points.append((hx, hy))
-                    st.session_state.temp_heater = None
-                    st.session_state.pop("heater_x", None)
-                    st.session_state.pop("heater_y", None)
-                    st.rerun()
-
-    # 이전 단계 (열풍기 되돌리기)
-    if st.session_state.heater_points:
-        if st.button("⬅ 이전 열풍기 삭제"):
-            st.session_state.heater_points.pop()
-            st.session_state.temp_heater = None
+        if invalid:
+            st.error("❌ 모든 열풍기는 내부공간 안에 있어야 합니다.")
+        else:
+            st.session_state.heater_points = heaters
+            st.session_state.step = 3
             st.rerun()
-
-    # 배치 완료 안내
-    if len(st.session_state.heater_points) == heater_count:
-        st.success("✅ 모든 열풍기 배치 완료")
 
 # ======================================================
 # 열해석
@@ -257,24 +239,27 @@ def run_heat_simulation(space, heaters):
 # ======================================================
 # 3단계: 결과
 # ======================================================
-if st.session_state.heater_points:
+if st.session_state.step == 3:
     st.subheader("🌡️ 3단계: 열해석 결과")
+
+    if st.button("⬅ 2단계로 돌아가기"):
+        st.session_state.step = 2
+        st.session_state.heat_result = None
+        st.rerun()
 
     if st.button("🧮 열해석 계산 실행"):
         with st.spinner("계산 중..."):
-            result = run_heat_simulation(
+            st.session_state.heat_result = run_heat_simulation(
                 st.session_state.space_points,
                 st.session_state.heater_points
             )
-            st.session_state.heat_result = result
 
     if st.session_state.heat_result:
-        if (
-            st.session_state.heat_result is not None and
-            isinstance(st.session_state.heat_result, tuple) and
-            len(st.session_state.heat_result) == 6
-        ):
-            T_hist, x, y, X, Y, mask = st.session_state.heat_result
+        if len(st.session_state.heat_result) != 6:
+            st.error("열해석 결과 오류. 다시 계산하세요.")
+            st.stop()
+
+        T_hist, x, y, X, Y, mask = st.session_state.heat_result
         else:
             st.error("열해석 결과가 올바르지 않습니다. 다시 계산을 실행해주세요.")
             st.stop()
