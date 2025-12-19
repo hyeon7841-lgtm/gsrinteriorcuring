@@ -7,10 +7,10 @@ import numpy as np
 # 기본 설정
 # ======================================================
 st.set_page_config(layout="wide")
-st.title("🔥 내부공간 열풍기 배치 및 열해석 시뮬레이터 (산업용 v1)")
+st.title("🔥 내부공간 열풍기 배치 및 열해석 시뮬레이터")
 
 # ======================================================
-# 세션 상태
+# 세션 상태 초기화
 # ======================================================
 if "space_points" not in st.session_state:
     st.session_state.space_points = [(0.0, 0.0)]
@@ -25,17 +25,17 @@ if "temp_heater" not in st.session_state:
     st.session_state.temp_heater = None
 
 if "heat_result" not in st.session_state:
-    st.session_state.heat_result = None  # (T_history, x, y, mask)
+    st.session_state.heat_result = None
 
 # ======================================================
-# 사이드바
+# 사이드바 설정
 # ======================================================
-st.sidebar.header("설정")
+st.sidebar.header("환경 설정")
 
 heater_count = st.sidebar.selectbox("열풍기 개수", [1, 2])
-
-inside_temp = st.sidebar.number_input("초기 내부온도 (°C)", value=10.0)
-total_hours = 9
+inside_temp = st.sidebar.number_input(
+    "초기 내부온도 (°C)", value=10.0, step=0.5
+)
 
 if st.sidebar.button("❌ 전체 초기화"):
     for k in list(st.session_state.keys()):
@@ -43,34 +43,47 @@ if st.sidebar.button("❌ 전체 초기화"):
     st.rerun()
 
 # ======================================================
+# 공간 내부 판별 함수
+# ======================================================
+def point_in_polygon(x, y, poly):
+    inside = False
+    j = len(poly) - 1
+    for i in range(len(poly)):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if ((yi > y) != (yj > y)) and \
+           (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+# ======================================================
 # 1단계: 내부공간 정의
 # ======================================================
-st.subheader("🧱 1단계: 내부공간 정의")
+st.subheader("🧱 1단계: 내부공간 정의 (단위: m)")
 
 if not st.session_state.space_closed:
     col1, col2, col3 = st.columns([1, 1, 2])
+
     with col1:
         x = st.number_input(
-    "X 좌표 (m)",
-    value=0.000,
-    step=0.001,
-    format="%.3f"
-)
+            "X 좌표 (m)", value=0.000, step=0.001, format="%.3f"
+        )
     with col2:
         y = st.number_input(
-    "Y 좌표 (m)",
-    value=0.000,
-    step=0.001,
-    format="%.3f"
-)
+            "Y 좌표 (m)", value=0.000, step=0.001, format="%.3f"
+        )
+
     with col3:
         if st.button("➕ 선 추가"):
             st.session_state.space_points.append((x, y))
             st.rerun()
+
         if len(st.session_state.space_points) > 1:
             if st.button("⬅ 이전 단계"):
                 st.session_state.space_points.pop()
                 st.rerun()
+
         if len(st.session_state.space_points) >= 3:
             if st.button("✅ 공간 완성"):
                 st.session_state.space_points.append((0.0, 0.0))
@@ -78,7 +91,7 @@ if not st.session_state.space_closed:
                 st.rerun()
 
 # ======================================================
-# 공간 시각화
+# 공간 & 열풍기 시각화
 # ======================================================
 fig = go.Figure()
 
@@ -88,7 +101,7 @@ if st.session_state.space_points:
         x=xs, y=ys,
         mode="lines+markers",
         line=dict(color="blue", width=3),
-        marker=dict(size=8),
+        marker=dict(size=7),
         name="내부 공간"
     ))
 
@@ -102,30 +115,20 @@ if st.session_state.heater_points:
     ))
 
 fig.update_layout(
-    width=750, height=450,
-    dragmode=False,
+    width=750,
+    height=450,
     clickmode="event",
+    dragmode=False,
     xaxis=dict(fixedrange=True),
-    yaxis=dict(scaleanchor="x", scaleratio=1, fixedrange=True),
+    yaxis=dict(
+        scaleanchor="x",
+        scaleratio=1,
+        fixedrange=True
+    ),
     title="공간 및 열풍기 배치"
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
-# ======================================================
-# 공간 내부 판별
-# ======================================================
-def point_in_polygon(x, y, poly):
-    inside = False
-    j = len(poly) - 1
-    for i in range(len(poly)):
-        xi, yi = poly[i]
-        xj, yj = poly[j]
-        if ((yi > y) != (yj > y)) and \
-           (x < (xj - xi) * (y - yi) / (yj - yi + 1e-9) + xi):
-            inside = not inside
-        j = i
-    return inside
 
 # ======================================================
 # 2단계: 열풍기 배치
@@ -136,9 +139,11 @@ if st.session_state.space_closed:
     if st.button("⬅ 이전 열풍기"):
         if st.session_state.heater_points:
             st.session_state.heater_points.pop()
+            st.session_state.heat_result = None
             st.rerun()
 
     clicked = plotly_events(fig, click_event=True)
+
     if clicked:
         st.session_state.temp_heater = (
             float(clicked[0]["x"]),
@@ -147,24 +152,27 @@ if st.session_state.space_closed:
 
     if st.session_state.temp_heater:
         hx, hy = st.session_state.temp_heater
+
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
             hx = st.number_input(
-    "열풍기 X 위치 (m)",
-    value=float(hx),
-    step=0.001,
-    format="%.3f"
-)
+                "열풍기 X 위치 (m)",
+                value=float(hx),
+                step=0.001,
+                format="%.3f"
+            )
         with col2:
             hy = st.number_input(
-    "열풍기 Y 위치 (m)",
-    value=float(hy),
-    step=0.001,
-    format="%.3f"
-)
+                "열풍기 Y 위치 (m)",
+                value=float(hy),
+                step=0.001,
+                format="%.3f"
+            )
         with col3:
             if st.button("🔥 위치 확정"):
-                if point_in_polygon(hx, hy, st.session_state.space_points):
+                if point_in_polygon(
+                    hx, hy, st.session_state.space_points
+                ):
                     if len(st.session_state.heater_points) < heater_count:
                         st.session_state.heater_points.append((hx, hy))
                         st.session_state.temp_heater = None
@@ -172,14 +180,15 @@ if st.session_state.space_closed:
                         st.rerun()
 
 # ======================================================
-# 🔥 실제 열해석 엔진
+# 열해석 계산 함수 (FTCS)
 # ======================================================
-def run_heat_simulation(space_points, heater_points, inside_temp, total_hours):
-    alpha = 1.0e-6
+def run_heat_simulation(space, heaters, T0):
+    alpha = 1.0e-6        # m2/s
     rho, cp = 2400, 900
     heater_power = 20461  # W
+    total_hours = 9
 
-    xs, ys = zip(*space_points)
+    xs, ys = zip(*space)
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
 
@@ -195,15 +204,15 @@ def run_heat_simulation(space_points, heater_points, inside_temp, total_hours):
     mask = np.zeros((ny, nx), dtype=bool)
     for i in range(nx):
         for j in range(ny):
-            mask[j, i] = point_in_polygon(X[j, i], Y[j, i], space_points)
+            mask[j, i] = point_in_polygon(X[j, i], Y[j, i], space)
 
-    T = np.ones((ny, nx)) * inside_temp
+    T = np.ones((ny, nx)) * T0
     history = [T.copy()]
 
     for _ in range(total_hours):
         Tn = T.copy()
-        for i in range(1, nx-1):
-            for j in range(1, ny-1):
+        for i in range(1, nx - 1):
+            for j in range(1, ny - 1):
                 if not mask[j, i]:
                     continue
                 lap = (
@@ -212,7 +221,7 @@ def run_heat_simulation(space_points, heater_points, inside_temp, total_hours):
                 )
                 Tn[j, i] += alpha * dt * lap
 
-        for hx, hy in heater_points:
+        for hx, hy in heaters:
             ix = np.argmin(np.abs(x - hx))
             iy = np.argmin(np.abs(y - hy))
             if mask[iy, ix]:
@@ -224,7 +233,7 @@ def run_heat_simulation(space_points, heater_points, inside_temp, total_hours):
     return history, x, y, mask
 
 # ======================================================
-# 3단계: 계산 실행 + 시각화
+# 3단계: 열해석 실행 및 시각화
 # ======================================================
 if st.session_state.heater_points:
     st.subheader("🌡️ 3단계: 열해석 결과")
@@ -234,33 +243,36 @@ if st.session_state.heater_points:
             st.session_state.heat_result = run_heat_simulation(
                 st.session_state.space_points,
                 st.session_state.heater_points,
-                inside_temp,
-                total_hours
+                inside_temp
             )
 
     if st.session_state.heat_result:
         T_hist, x, y, mask = st.session_state.heat_result
-        t = st.slider("시간 (h)", 0, total_hours, 0)
+        t = st.slider("경과 시간 (시간)", 0, 9, 0)
 
-        T = T_hist[t]
+        T = T_hist[t].copy()
         T[~mask] = np.nan
 
         figT = go.Figure(
             data=go.Heatmap(
-    z=T,
-    x=x,
-    y=y,
-    colorscale="Turbo",
-    zmin=-10,
-    zmax=40,
-    colorbar=dict(
-        title="온도 (°C)",
-        tickvals=[-10, 0, 10, 20, 30, 40]
-    )
-)
+                z=T,
+                x=x,
+                y=y,
+                colorscale="Turbo",
+                zmin=-10,
+                zmax=40,
+                colorbar=dict(
+                    title="온도 (°C)",
+                    tickvals=[-10, 0, 10, 20, 30, 40]
+                )
+            )
+        )
+
         figT.update_layout(
-            width=750, height=450,
+            width=750,
+            height=450,
             yaxis=dict(scaleanchor="x", scaleratio=1),
             title=f"{t}시간 후 온도 분포"
         )
+
         st.plotly_chart(figT, use_container_width=True)
