@@ -143,9 +143,9 @@ if st.session_state.space_closed:
 
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            hx = st.number_input("열풍기 X 좌표", value=hx, step=0.1)
+            hx = st.number_input("열풍기 X 좌표", value=float(hx), step=0.1)
         with col2:
-            hy = st.number_input("열풍기 Y 좌표", value=hy, step=0.1)
+            hy = st.number_input("열풍기 Y 좌표", value=float(hy), step=0.1)
 
         with col3:
             if st.button("🔥 열풍기 위치 확정"):
