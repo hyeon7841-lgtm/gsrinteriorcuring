@@ -127,12 +127,21 @@ if st.session_state.heater_points:
 fig.update_layout(
     width=720,
     height=420,
-    xaxis=dict(range=[0, NX]),
-    yaxis=dict(range=[0, NY]),
+    dragmode=False,
+    clickmode="event+select",
+    xaxis=dict(range=[0, NX], fixedrange=True),
+    yaxis=dict(range=[0, NY], fixedrange=True),
     title="공간 꼭지점을 순서대로 클릭하세요"
 )
 
-clicked = plotly_events(fig, click_event=True)
+clicked = plotly_events(
+    fig,
+    click_event=True,
+    hover_event=False,
+    select_event=False,
+    override_height=420,
+    override_width=720
+)
 
 if clicked:
     x = int(clicked[0]["x"])
