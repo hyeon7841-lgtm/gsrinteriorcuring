@@ -30,7 +30,7 @@ if "heat_result" not in st.session_state:
 # ======================================================
 st.sidebar.header("환경 설정")
 heater_count = st.sidebar.selectbox("열풍기 개수", [1, 2])
-inside_temp = st.sidebar.number_input("초기 내부온도 (°C)", value=10.0, step=0.5)
+inside_temp = st.sidebar.number_input("초기 내부온도 (°C)", 10.0, step=0.5)
 
 if st.sidebar.button("❌ 전체 초기화"):
     for k in list(st.session_state.keys()):
@@ -60,9 +60,9 @@ st.subheader("🧱 1단계: 내부공간 정의 (단위: m)")
 if not st.session_state.space_closed:
     c1, c2, c3 = st.columns([1,1,2])
     with c1:
-        x = st.number_input("X 좌표 (m)", 0.000, step=0.001, format="%.3f")
+        x = st.number_input("X (m)", 0.000, step=0.001, format="%.3f")
     with c2:
-        y = st.number_input("Y 좌표 (m)", 0.000, step=0.001, format="%.3f")
+        y = st.number_input("Y (m)", 0.000, step=0.001, format="%.3f")
     with c3:
         if st.button("➕ 선 추가"):
             st.session_state.space_points.append((x,y))
@@ -84,11 +84,7 @@ fig = go.Figure()
 
 if st.session_state.space_points:
     xs, ys = zip(*st.session_state.space_points)
-    fig.add_trace(go.Scatter(
-        x=xs, y=ys, mode="lines+markers",
-        line=dict(width=3), marker=dict(size=7),
-        name="공간"
-    ))
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", name="공간"))
 
 if st.session_state.heater_points:
     hx, hy = zip(*st.session_state.heater_points)
@@ -99,7 +95,7 @@ if st.session_state.heater_points:
     ))
 
 fig.update_layout(
-    height=450,
+    height=420,
     clickmode="event",
     yaxis=dict(scaleanchor="x", scaleratio=1),
     xaxis=dict(fixedrange=True),
@@ -121,7 +117,6 @@ if st.session_state.space_closed:
             st.rerun()
 
     clicked = plotly_events(fig, click_event=True)
-
     if clicked:
         st.session_state.temp_heater = (
             float(clicked[0]["x"]),
@@ -145,7 +140,7 @@ if st.session_state.space_closed:
                         st.rerun()
 
 # ======================================================
-# 열해석 함수
+# 열해석
 # ======================================================
 def run_heat_simulation(space, heaters, T0):
     alpha = 1e-6
@@ -197,7 +192,7 @@ def run_heat_simulation(space, heaters, T0):
     return history, x, y, mask
 
 # ======================================================
-# 3단계: 결과 + 지표 + 저장
+# 3단계: 결과 + 그래프 + 애니메이션
 # ======================================================
 if st.session_state.heater_points:
     st.subheader("🌡️ 3단계: 열해석 결과")
@@ -212,81 +207,95 @@ if st.session_state.heater_points:
 
     if st.session_state.heat_result:
         T_hist, x, y, mask = st.session_state.heat_result
-        t = st.slider("경과 시간 (h)", 0, 9, 0)
 
-        T = T_hist[t].copy()
-        T[~mask] = np.nan
-
-        # ---- 지표 계산 ----
-        avg_temp = np.nanmean(T)
-
-        cx, cy = (x.min()+x.max())/2, (y.min()+y.max())/2
-        ix = np.argmin(np.abs(x-cx))
-        iy = np.argmin(np.abs(y-cy))
-        center_temp = T[iy,ix]
-
-        corners = [
-            (x.min(), y.min()),
-            (x.min(), y.max()),
-            (x.max(), y.max()),
-            (x.max(), y.min())
-        ]
-        corner_vals = []
-        for px,py in corners:
-            ix = np.argmin(np.abs(x-px))
-            iy = np.argmin(np.abs(y-py))
-            corner_vals.append(T[iy,ix])
-        corner_avg = np.nanmean(corner_vals)
-
-        st.markdown(f"""
-        **평균 온도:** {avg_temp:.2f} °C  
-        **중앙 온도:** {center_temp:.2f} °C  
-        **꼭지점 평균 온도:** {corner_avg:.2f} °C
-        """)
-
-        # ---- Heatmap ----
-        figT = go.Figure(
-            data=go.Heatmap(
-                z=T, x=x, y=y,
-                colorscale="Turbo",
-                zmin=-10, zmax=40,
-                colorbar=dict(title="온도 (°C)")
-            )
-        )
-        figT.update_layout(
-            height=450,
-            yaxis=dict(scaleanchor="x", scaleratio=1),
-            title=f"{t}시간 후 온도 분포"
-        )
-
-        st.plotly_chart(figT, use_container_width=True)
-
-        # ---- CSV 저장 ----
-        data = []
-        for i,Th in enumerate(T_hist):
+        # ---------- 시간별 지표 ----------
+        rows = []
+        for t, Th in enumerate(T_hist):
             Th2 = Th.copy()
             Th2[~mask] = np.nan
-            data.append({
-                "시간(h)": i,
-                "평균온도": np.nanmean(Th2)
-            })
-        df = pd.DataFrame(data)
+            avg = np.nanmean(Th2)
 
-        csv = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "📄 결과 CSV 다운로드",
-            csv,
-            "temperature_result.csv",
-            "text/csv"
+            cx, cy = (x.min()+x.max())/2, (y.min()+y.max())/2
+            ix = np.argmin(np.abs(x-cx))
+            iy = np.argmin(np.abs(y-cy))
+            center = Th2[iy,ix]
+
+            corners = [
+                (x.min(),y.min()),(x.min(),y.max()),
+                (x.max(),y.max()),(x.max(),y.min())
+            ]
+            cv = []
+            for px,py in corners:
+                ix = np.argmin(np.abs(x-px))
+                iy = np.argmin(np.abs(y-py))
+                cv.append(Th2[iy,ix])
+            corner_avg = np.nanmean(cv)
+
+            rows.append({
+                "시간(h)": t,
+                "평균온도": avg,
+                "중앙온도": center,
+                "꼭지점평균온도": corner_avg
+            })
+
+        df = pd.DataFrame(rows)
+
+        # ---------- 시간-온도 그래프 ----------
+        fig_line = go.Figure()
+        fig_line.add_trace(go.Scatter(x=df["시간(h)"], y=df["평균온도"], name="평균"))
+        fig_line.add_trace(go.Scatter(x=df["시간(h)"], y=df["중앙온도"], name="중앙"))
+        fig_line.add_trace(go.Scatter(x=df["시간(h)"], y=df["꼭지점평균온도"], name="꼭지점"))
+
+        fig_line.update_layout(
+            title="시간별 온도 변화",
+            xaxis_title="시간 (h)",
+            yaxis_title="온도 (°C)"
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+
+        # ---------- Heatmap 애니메이션 ----------
+        frames = []
+        for t, Th in enumerate(T_hist):
+            Tm = Th.copy()
+            Tm[~mask] = np.nan
+            frames.append(go.Frame(
+                data=[go.Heatmap(
+                    z=Tm, x=x, y=y,
+                    zmin=-10, zmax=40,
+                    colorscale="Turbo"
+                )],
+                name=str(t)
+            ))
+
+        fig_anim = go.Figure(
+            data=frames[0].data,
+            frames=frames
         )
 
-        # ---- 이미지 저장 ----
-        html_buf = io.StringIO()
-figT.write_html(html_buf, include_plotlyjs="cdn")
+        fig_anim.update_layout(
+            title="시간 경과 Heatmap",
+            updatemenus=[{
+                "type": "buttons",
+                "buttons": [{
+                    "label": "▶ 재생",
+                    "method": "animate",
+                    "args": [None]
+                }]
+            }],
+            yaxis=dict(scaleanchor="x", scaleratio=1)
+        )
 
-st.download_button(
-    "🌐 Heatmap HTML 다운로드",
-    html_buf.getvalue(),
-    "heatmap.html",
-    "text/html"
-)
+        st.plotly_chart(fig_anim, use_container_width=True)
+
+        # ---------- 저장 ----------
+        csv = df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("📄 CSV 다운로드", csv, "temperature_result.csv")
+
+        html_buf = io.StringIO()
+        fig_anim.write_html(html_buf, include_plotlyjs="cdn")
+        st.download_button(
+            "🌐 Heatmap 애니메이션 HTML",
+            html_buf.getvalue(),
+            "heatmap_animation.html",
+            "text/html"
+        )
