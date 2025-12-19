@@ -281,11 +281,12 @@ if st.session_state.heater_points:
         )
 
         # ---- 이미지 저장 ----
-        buf = io.BytesIO()
-        figT.write_image(buf, format="png")
-        st.download_button(
-            "🖼️ Heatmap 이미지 다운로드",
-            buf.getvalue(),
-            "heatmap.png",
-            "image/png"
-        )
+        html_buf = io.StringIO()
+figT.write_html(html_buf, include_plotlyjs="cdn")
+
+st.download_button(
+    "🌐 Heatmap HTML 다운로드",
+    html_buf.getvalue(),
+    "heatmap.html",
+    "text/html"
+)
