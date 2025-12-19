@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from matplotlib.path import Path
 
 # ======================================================
-# 기본 설정
+# 페이지 설정
 # ======================================================
 st.set_page_config(page_title="난방 시뮬레이터", layout="wide")
 
@@ -30,7 +30,7 @@ if "step" not in st.session_state:
     reset_all()
 
 # ======================================================
-# 열해석 함수 (단순 확산 모델)
+# 단순 열확산 시뮬레이션 함수
 # ======================================================
 def run_heat_simulation(space_pts, heater_pts):
     pts = np.array(space_pts)
@@ -56,22 +56,17 @@ def run_heat_simulation(space_pts, heater_pts):
 
     for _ in range(hours + 1):
         Tn = T.copy()
-
         for i in range(1, nx - 1):
             for j in range(1, ny - 1):
                 if not mask[j, i]:
                     continue
                 Tn[j, i] += alpha * (
-                    T[j+1, i] + T[j-1, i] +
-                    T[j, i+1] + T[j, i-1] -
-                    4*T[j, i]
+                    T[j+1, i] + T[j-1, i] + T[j, i+1] + T[j, i-1] - 4*T[j, i]
                 )
-
         for hx, hy in heater_pts:
             ix = np.argmin(np.abs(x - hx))
             iy = np.argmin(np.abs(y - hy))
             Tn[iy, ix] += 5.0
-
         T = np.clip(Tn, -10, 40)
         T_hist.append(T.copy())
 
@@ -81,7 +76,6 @@ def run_heat_simulation(space_pts, heater_pts):
 # UI 시작
 # ======================================================
 st.title("🔥 난방 시뮬레이터")
-
 st.button("🔄 전체 초기화", on_click=reset_all)
 
 # ======================================================
@@ -158,7 +152,7 @@ if st.session_state.step == 2:
         st.rerun()
 
 # ======================================================
-# 3단계: 열해석 결과
+# 3단계: 시뮬레이션 결과
 # ======================================================
 if st.session_state.step == 3:
     st.subheader("3️⃣ 시뮬레이션 결과")
@@ -185,191 +179,86 @@ if st.session_state.step == 3:
             st.session_state.heat_result = result
 
     if st.session_state.heat_result is not None:
-    T_hist, x, y, X, Y, mask = st.session_state.heat_result
+        T_hist, x, y, X, Y, mask = st.session_state.heat_result
 
-    # -----------------------------
-    # 1️⃣ 중심/모서리 평균 온도 계산
-    # -----------------------------
-    rows = []
-    for t, T in enumerate(T_hist):
-        T2 = T.copy()
-        T2[~mask] = np.nan
-        rows.append({
-            "시간(h)": t,
-            "중심부 평균온도(°C)": np.nanmean(T2),
-            "모서리 평균온도(°C)": np.nanmean([
-                T2[0,0], T2[0,-1], T2[-1,0], T2[-1,-1]
-            ])
-        })
-    df = pd.DataFrame(rows)
-    st.session_state.df_result = df
+        # -----------------------------
+        # 1️⃣ 중심/모서리 평균 온도 계산
+        # -----------------------------
+        rows = []
+        for t, T in enumerate(T_hist):
+            T2 = T.copy()
+            T2[~mask] = np.nan
+            rows.append({
+                "시간(h)": t,
+                "중심부 평균온도(°C)": np.nanmean(T2),
+                "모서리 평균온도(°C)": np.nanmean([
+                    T2[0,0], T2[0,-1], T2[-1,0], T2[-1,-1]
+                ])
+            })
+        df = pd.DataFrame(rows)
+        st.session_state.df_result = df
+        st.line_chart(df.set_index("시간(h)"))
 
-    st.line_chart(df.set_index("시간(h)"))
+        # -----------------------------
+        # 2️⃣ 시간 드래그용 Heatmap (30분 간격)
+        # -----------------------------
+        st.markdown("### ⏱ 시간별 열 분포 직접 확인 (30분 간격)")
 
-    # -----------------------------
-    # 2️⃣ 시간 드래그용 Heatmap (30분 간격)
-    # -----------------------------
-    st.markdown("### ⏱ 시간별 열 분포 직접 확인 (30분 간격)")
+        total_minutes = len(T_hist) * 60
+        time_min = st.slider(
+            "시간 선택 (분)",
+            min_value=0,
+            max_value=total_minutes - 60,
+            step=30,
+            value=0
+        )
 
-    total_minutes = len(T_hist) * 60
-    time_min = st.slider(
-        "시간 선택 (분)",
-        min_value=0,
-        max_value=total_minutes - 60,
-        step=30,
-        value=0
-    )
+        t_idx = time_min // 60
+        T_sel = T_hist[t_idx].copy()
+        T_sel[~mask] = np.nan
 
-    t_idx = time_min // 60
-    T_sel = T_hist[t_idx].copy()
-    T_sel[~mask] = np.nan
-
-    fig_drag = go.Figure()
-    fig_drag.add_trace(go.Heatmap(
-        z=T_sel,
-        x=x,
-        y=y,
-        zmin=-10,
-        zmax=40,
-        colorscale="Turbo",
-        colorbar=dict(title="°C")
-    ))
-
-    hx, hy = zip(*st.session_state.heater_points)
-    fig_drag.add_trace(go.Scatter(
-        x=hx,
-        y=hy,
-        mode="markers+text",
-        marker=dict(size=14, color="red"),
-        text=[f"🔥{i+1}" for i in range(len(hx))],
-        textposition="top center"
-    ))
-
-    wind = np.deg2rad(20)
-    arrow = 0.2 * (x.max() - x.min())
-
-    for px, py in st.session_state.heater_points:
-        fig_drag.add_trace(go.Scatter(
-            x=[px, px + arrow*np.cos(wind)],
-            y=[py, py + arrow*np.sin(wind)],
-            mode="lines",
-            line=dict(width=3, color="black"),
-            showlegend=False
+        fig_drag = go.Figure()
+        fig_drag.add_trace(go.Heatmap(
+            z=T_sel,
+            x=x,
+            y=y,
+            zmin=-10,
+            zmax=40,
+            colorscale="Turbo",
+            colorbar=dict(title="°C")
         ))
-
-    fig_drag.update_layout(
-        title=f"{t_idx}시간 ({time_min}분) 시점 열 분포",
-        yaxis=dict(scaleanchor="x", scaleratio=1)
-    )
-    st.plotly_chart(fig_drag, use_container_width=True)
-
-    # -----------------------------
-    # 3️⃣ 기존 Heatmap 애니메이션
-    # -----------------------------
-    frames = []
-    wind = np.deg2rad(20)
-    arrow = 0.2*(x.max()-x.min())
-
-    for t, T in enumerate(T_hist):
-        T2 = T.copy()
-        T2[~mask] = np.nan
-
-        data = [
-            go.Heatmap(
-                z=T2, x=x, y=y,
-                zmin=-10, zmax=40,
-                colorscale="Turbo"
-            )
-        ]
 
         hx, hy = zip(*st.session_state.heater_points)
-        data.append(go.Scatter(
-            x=hx, y=hy,
+        fig_drag.add_trace(go.Scatter(
+            x=hx,
+            y=hy,
             mode="markers+text",
             marker=dict(size=14, color="red"),
-            text=["🔥"]*len(hx)
+            text=[f"🔥{i+1}" for i in range(len(hx))],
+            textposition="top center"
         ))
 
+        wind = np.deg2rad(20)
+        arrow = 0.2 * (x.max() - x.min())
+
         for px, py in st.session_state.heater_points:
-            data.append(go.Scatter(
-                x=[px, px+arrow*np.cos(wind)],
-                y=[py, py+arrow*np.sin(wind)],
+            fig_drag.add_trace(go.Scatter(
+                x=[px, px + arrow*np.cos(wind)],
+                y=[py, py + arrow*np.sin(wind)],
                 mode="lines",
                 line=dict(width=3, color="black"),
                 showlegend=False
             ))
 
-        frames.append(go.Frame(data=data, name=str(t)))
+        fig_drag.update_layout(
+            title=f"{t_idx}시간 ({time_min}분) 시점 열 분포",
+            yaxis=dict(scaleanchor="x", scaleratio=1)
+        )
+        st.plotly_chart(fig_drag, use_container_width=True)
 
-    fig_anim = go.Figure(data=frames[0].data, frames=frames)
-    fig_anim.update_layout(
-        yaxis=dict(scaleanchor="x", scaleratio=1),
-        updatemenus=[{
-            "type": "buttons",
-            "buttons": [{"label": "▶ 재생", "method": "animate", "args": [None]}]
-        }]
-    )
-    st.plotly_chart(fig_anim, use_container_width=True)
-
-# ======================================================
-# 시간 드래그용 Heatmap (30분 간격)
-# ======================================================
-st.markdown("### ⏱ 시간별 열 분포 직접 확인 (30분 간격)")
-
-total_minutes = len(T_hist) * 60
-time_min = st.slider(
-    "시간 선택 (분)",
-    min_value=0,
-    max_value=total_minutes - 60,
-    step=30,
-    value=0
-)
-
-t_idx = time_min // 60
-T_sel = T_hist[t_idx].copy()
-T_sel[~mask] = np.nan
-
-fig_drag = go.Figure()
-
-fig_drag.add_trace(go.Heatmap(
-    z=T_sel,
-    x=x,
-    y=y,
-    zmin=-10,
-    zmax=40,
-    colorscale="Turbo",
-    colorbar=dict(title="°C")
-))
-
-hx, hy = zip(*st.session_state.heater_points)
-fig_drag.add_trace(go.Scatter(
-    x=hx,
-    y=hy,
-    mode="markers+text",
-    marker=dict(size=14, color="red"),
-    text=[f"🔥{i+1}" for i in range(len(hx))],
-    textposition="top center"
-))
-
-wind = np.deg2rad(20)
-arrow = 0.2 * (x.max() - x.min())
-
-for px, py in st.session_state.heater_points:
-    fig_drag.add_trace(go.Scatter(
-        x=[px, px + arrow*np.cos(wind)],
-        y=[py, py + arrow*np.sin(wind)],
-        mode="lines",
-        line=dict(width=3, color="black"),
-        showlegend=False
-    ))
-
-fig_drag.update_layout(
-    title=f"{t_idx}시간 ({time_min}분) 시점 열 분포",
-    yaxis=dict(scaleanchor="x", scaleratio=1)
-)
-
-st.plotly_chart(fig_drag, use_container_width=True)
-
+        # -----------------------------
+        # 3️⃣ Heatmap 애니메이션
+        # -----------------------------
         frames = []
         wind = np.deg2rad(20)
         arrow = 0.2*(x.max()-x.min())
@@ -405,25 +294,26 @@ st.plotly_chart(fig_drag, use_container_width=True)
 
             frames.append(go.Frame(data=data, name=str(t)))
 
-        fig = go.Figure(data=frames[0].data, frames=frames)
-        fig.update_layout(
+        fig_anim = go.Figure(data=frames[0].data, frames=frames)
+        fig_anim.update_layout(
             yaxis=dict(scaleanchor="x", scaleratio=1),
             updatemenus=[{
                 "type": "buttons",
                 "buttons": [{"label": "▶ 재생", "method": "animate", "args": [None]}]
             }]
         )
+        st.plotly_chart(fig_anim, use_container_width=True)
 
-        st.plotly_chart(fig, use_container_width=True)
-
+        # -----------------------------
+        # 4️⃣ 다운로드 버튼
+        # -----------------------------
         st.download_button(
             "⬇ CSV 다운로드",
             df.to_csv(index=False),
             file_name="simulation_result.csv"
         )
-
         st.download_button(
             "⬇ HTML 다운로드",
-            fig.to_html(),
+            fig_anim.to_html(),
             file_name="heatmap_animation.html"
         )
