@@ -1,16 +1,17 @@
 import streamlit as st
 import plotly.graph_objects as go
 from streamlit_plotly_events import plotly_events
+import numpy as np
 
-# =====================================
+# ======================================================
 # 기본 설정
-# =====================================
+# ======================================================
 st.set_page_config(layout="wide")
-st.title("🔥 좌표 기반 내부공간 열풍기 배치 시뮬레이터")
+st.title("🔥 내부공간 열풍기 배치 및 온도 시각화 시뮬레이터 (v1)")
 
-# =====================================
+# ======================================================
 # 세션 상태
-# =====================================
+# ======================================================
 if "space_points" not in st.session_state:
     st.session_state.space_points = [(0.0, 0.0)]
 
@@ -23,9 +24,9 @@ if "heater_points" not in st.session_state:
 if "temp_heater" not in st.session_state:
     st.session_state.temp_heater = None
 
-# =====================================
+# ======================================================
 # 사이드바
-# =====================================
+# ======================================================
 st.sidebar.header("설정")
 
 heater_count = st.sidebar.selectbox("열풍기 개수", [1, 2])
@@ -37,9 +38,9 @@ if st.sidebar.button("❌ 전체 초기화"):
     st.session_state.temp_heater = None
     st.rerun()
 
-# =====================================
-# 1단계: 공간 좌표 입력
-# =====================================
+# ======================================================
+# 1단계: 내부공간 정의
+# ======================================================
 st.subheader("🧱 1단계: 내부공간 정의 (기준점: 0,0)")
 
 if not st.session_state.space_closed:
@@ -66,16 +67,15 @@ if not st.session_state.space_closed:
                 st.session_state.space_closed = True
                 st.rerun()
 
-# =====================================
-# Plotly 시각화
-# =====================================
+# ======================================================
+# 공간 및 열풍기 배치 시각화
+# ======================================================
 fig = go.Figure()
 
 if len(st.session_state.space_points) >= 1:
     xs, ys = zip(*st.session_state.space_points)
     fig.add_trace(go.Scatter(
-        x=xs,
-        y=ys,
+        x=xs, y=ys,
         mode="lines+markers",
         line=dict(color="blue", width=3),
         marker=dict(size=8),
@@ -85,8 +85,7 @@ if len(st.session_state.space_points) >= 1:
 if st.session_state.heater_points:
     hx, hy = zip(*st.session_state.heater_points)
     fig.add_trace(go.Scatter(
-        x=hx,
-        y=hy,
+        x=hx, y=hy,
         mode="markers",
         marker=dict(color="red", size=14),
         name="열풍기"
@@ -101,7 +100,7 @@ fig.update_layout(
     yaxis=dict(
         title="Y (m)",
         fixedrange=True,
-        scaleanchor="x",   # ⭐ 비율 1:1
+        scaleanchor="x",
         scaleratio=1
     ),
     title="공간 정의 및 열풍기 배치"
@@ -109,9 +108,9 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# =====================================
-# 점 내부 판별
-# =====================================
+# ======================================================
+# 공간 내부 판별 함수
+# ======================================================
 def point_in_polygon(x, y, poly):
     inside = False
     j = len(poly) - 1
@@ -124,21 +123,19 @@ def point_in_polygon(x, y, poly):
         j = i
     return inside
 
-# =====================================
+# ======================================================
 # 2단계: 열풍기 배치
-# =====================================
+# ======================================================
 if st.session_state.space_closed:
-    st.subheader("🔥 2단계: 열풍기 배치 (클릭 → 미세조정 → 확정)")
+    st.subheader("🔥 2단계: 열풍기 배치")
 
-    # 🔹 확정된 열풍기 되돌리기
-    colu1, colu2 = st.columns([1, 4])
+    colu1, _ = st.columns([1, 5])
     with colu1:
         if st.button("⬅ 이전 열풍기 되돌리기"):
             if st.session_state.heater_points:
                 st.session_state.heater_points.pop()
                 st.rerun()
 
-    # 🔹 Plot 클릭
     clicked = plotly_events(fig, click_event=True)
 
     if clicked:
@@ -147,7 +144,6 @@ if st.session_state.space_closed:
             float(clicked[0]["y"])
         )
 
-    # 🔹 임시 열풍기 좌표 조정
     if st.session_state.temp_heater:
         hx, hy = st.session_state.temp_heater
 
@@ -171,3 +167,55 @@ if st.session_state.space_closed:
             if st.button("❌ 임시 위치 취소"):
                 st.session_state.temp_heater = None
                 st.rerun()
+
+# ======================================================
+# 3단계: 온도 분포 시각화 (v1)
+# ======================================================
+if st.session_state.heater_points:
+    st.subheader("🌡️ 3단계: 온도 분포 시각화")
+
+    time_hour = st.slider("경과 시간 (시간)", 0, 9, 1)
+
+    xs, ys = zip(*st.session_state.space_points)
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    nx, ny = 80, 50
+    x = np.linspace(min_x, max_x, nx)
+    y = np.linspace(min_y, max_y, ny)
+    X, Y = np.meshgrid(x, y)
+
+    mask = np.zeros_like(X, dtype=bool)
+    for i in range(nx):
+        for j in range(ny):
+            mask[j, i] = point_in_polygon(
+                X[j, i], Y[j, i],
+                st.session_state.space_points
+            )
+
+    T = np.ones_like(X) * 10.0  # 초기온도
+
+    for hx, hy in st.session_state.heater_points:
+        dist = np.sqrt((X - hx)**2 + (Y - hy)**2)
+        T += 18 * np.exp(-dist / 2.5) * (time_hour / 9)
+
+    T[~mask] = np.nan
+
+    fig2 = go.Figure(
+        data=go.Heatmap(
+            z=T,
+            x=x,
+            y=y,
+            colorscale="Turbo",
+            colorbar=dict(title="온도 (°C)")
+        )
+    )
+
+    fig2.update_layout(
+        width=750,
+        height=450,
+        yaxis=dict(scaleanchor="x", scaleratio=1),
+        title=f"{time_hour}시간 경과 후 온도 분포"
+    )
+
+    st.plotly_chart(fig2, use_container_width=True)
