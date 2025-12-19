@@ -71,12 +71,11 @@ def add_heaters(T):
 
 def step_temperature(T):
     Tn = T.copy()
-    for i in range(1, NX-1):
-        for j in range(1, NY-1):
-            Tn[i, j] = T[i, j] + ALPHA * DT * (
-                (T[i+1, j] - 2*T[i, j] + T[i-1, j]) / DX**2 +
-                (T[i, j+1] - 2*T[i, j] + T[i, j-1]) / DY**2
-            )
+    # 2D Finite Difference Method (Vectorized)
+    Tn[1:-1, 1:-1] = T[1:-1, 1:-1] + ALPHA * DT * (
+        (T[2:, 1:-1] - 2*T[1:-1, 1:-1] + T[:-2, 1:-1]) / DX**2 +
+        (T[1:-1, 2:] - 2*T[1:-1, 1:-1] + T[1:-1, :-2]) / DY**2
+    )
     return Tn
 
 def measure_points(T):
