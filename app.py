@@ -247,11 +247,17 @@ if st.session_state.heater_points:
 
         figT = go.Figure(
             data=go.Heatmap(
-                z=T, x=x, y=y,
-                colorscale="Turbo",
-                colorbar=dict(title="온도 (°C)")
-            )
-        )
+    z=T,
+    x=x,
+    y=y,
+    colorscale="Turbo",
+    zmin=-10,
+    zmax=40,
+    colorbar=dict(
+        title="온도 (°C)",
+        tickvals=[-10, 0, 10, 20, 30, 40]
+    )
+)
         figT.update_layout(
             width=750, height=450,
             yaxis=dict(scaleanchor="x", scaleratio=1),
