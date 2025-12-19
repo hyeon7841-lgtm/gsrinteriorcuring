@@ -218,7 +218,17 @@ if st.session_state.heater_points:
     st.subheader("🌡️ 3단계: 열해석 결과")
 
     if st.button("🧮 열해석 계산 실행"):
+        with st.spinner("계산 중..."):
+            ...
+
+
+    if st.button("🧮 열해석 계산 실행"):
     with st.spinner("계산 중..."):
+        result = run_heat_simulation(
+            st.session_state.space_points,
+            st.session_state.heater_points
+        )
+        st.session_state.heat_result = result
         result = run_heat_simulation(
             st.session_state.space_points,
             st.session_state.heater_points
