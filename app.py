@@ -123,7 +123,7 @@ if st.button("🔄 전체 초기화"):
     st.rerun()
 
 # ---------- 1단계 ----------
-st.header("1️⃣ 공간 정의 (실시간 미리보기)")
+st.header("1️⃣ 공간 정의")
 
 if "space" not in st.session_state:
     st.session_state.space = []
@@ -160,7 +160,7 @@ if len(st.session_state.space) >= 1:
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------- 2단계 ----------
-st.header("2️⃣ 열풍기 배치 (부채꼴 시각화)")
+st.header("2️⃣ 열풍기 배치")
 
 heater_n = st.radio("열풍기 수량", [1, 2], horizontal=True)
 heaters = []
@@ -173,7 +173,7 @@ for i in range(heater_n):
     ang = c3.slider("풍향 (°)", -180, 180, 20, key=f"ang{i}")
     heaters.append({"x": hx, "y": hy, "angle": np.deg2rad(ang)})
 
-# 🔍 배치 미리보기 (부채꼴)
+# 🔍 배치 미리보기 
 if len(st.session_state.space) >= 3:
     fig = go.Figure()
     xs, ys = zip(*(st.session_state.space + [st.session_state.space[0]]))
