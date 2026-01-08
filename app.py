@@ -172,6 +172,24 @@ if len(st.session_state.space) >= 1:
 
 
 # ---------- 2단계 ----------
+st.subheader("🌬️ 열풍기 풍향 설정")
+
+wind_angle_deg = st.slider(
+    "풍향 각도 (도, +X축 기준)",
+    min_value=-180,
+    max_value=180,
+    value=20,
+    step=1
+)
+wind_angle = np.deg2rad(wind_angle_deg)
+influence_radius = st.slider(
+    "열풍기 영향 반경 표시 (m)",
+    min_value=0.5,
+    max_value=5.0,
+    value=2.5,
+    step=0.1
+)
+
 st.header("2️⃣ 열풍기 배치 (m)")
 
 heater_n = st.radio("열풍기 수량", [1, 2], horizontal=True)
@@ -198,20 +216,21 @@ st.subheader("🔥 열풍기 배치 미리보기")
 
 fig = go.Figure()
 
-# 공간 경계
+# --- 공간 경계 ---
 xs, ys = zip(*(st.session_state.space + [st.session_state.space[0]]))
 fig.add_trace(
     go.Scatter(
         x=xs,
         y=ys,
         mode="lines",
-        line=dict(width=2),
+        line=dict(width=2, color="black"),
         name="공간"
     )
 )
 
-# 열풍기 표시
+# --- 열풍기 표시 ---
 for i, (hx, hy) in enumerate(heaters):
+    # 열풍기 위치
     fig.add_trace(
         go.Scatter(
             x=[hx],
@@ -226,10 +245,27 @@ for i, (hx, hy) in enumerate(heaters):
         )
     )
 
-    # 풍향 벡터 (20도 고정)
-    L = 1.5  # 표시용 길이 (m)
-    dx = L * np.cos(HEATER_ANGLE)
-    dy = L * np.sin(HEATER_ANGLE)
+    # 🔥 영향 반경 (중첩 시각화 핵심)
+    theta = np.linspace(0, 2*np.pi, 60)
+    rx = hx + influence_radius * np.cos(theta)
+    ry = hy + influence_radius * np.sin(theta)
+
+    fig.add_trace(
+        go.Scatter(
+            x=rx,
+            y=ry,
+            fill="toself",
+            mode="lines",
+            line=dict(color="rgba(255,0,0,0.2)"),
+            fillcolor="rgba(255,0,0,0.15)",
+            showlegend=False
+        )
+    )
+
+    # 🌬️ 풍향 벡터
+    L = influence_radius
+    dx = L * np.cos(wind_angle)
+    dy = L * np.sin(wind_angle)
 
     fig.add_trace(
         go.Scatter(
@@ -242,13 +278,14 @@ for i, (hx, hy) in enumerate(heaters):
     )
 
 fig.update_layout(
-    height=450,
+    height=480,
     margin=dict(l=20, r=20, t=20, b=20),
     showlegend=False
 )
 fig.update_yaxes(scaleanchor="x")
 
 st.plotly_chart(fig, use_container_width=True)
+
 
 # ---------- 3단계 ----------
 st.header("3️⃣ 시뮬레이션 설정")
