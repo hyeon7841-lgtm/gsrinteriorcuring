@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from matplotlib.path import Path
-import io
 
 st.set_page_config(layout="wide")
 
@@ -21,11 +20,8 @@ SIM_HOURS = 9
 ALPHA = 0.03
 MIXING = 0.12   # 🔥 열대류/공기 혼합 강화
 
-WALL_U = {
-    "조적벽": 2.0,
-    "콘크리트벽": 1.7,
-    "샌드위치판넬": 0.5
-}
+# 🔒 벽체는 샌드위치 판넬로 고정
+WALL_U = 0.5   # W/m²K
 
 # =========================
 # 초기화
@@ -37,7 +33,7 @@ def reset_all():
 # =========================
 # 열 시뮬레이션
 # =========================
-def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
+def run_simulation(space_pts, heaters, height, init_temp, ext_temp):
     pts = np.array(space_pts)
     xmin, ymin = pts.min(axis=0)
     xmax, ymax = pts.max(axis=0)
@@ -61,14 +57,14 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
 
     rho, cp = 1.2, 1000
     C = rho * cp * area * height
-    U = WALL_U[wall_type]
+    U = WALL_U
 
     steps = int(SIM_HOURS * 3600 / DT)
 
     for step in range(steps):
         Tn = T.copy()
 
-        # 확산
+        # 🔁 열 확산
         for i in range(1, nx - 1):
             for j in range(1, ny - 1):
                 if mask[j, i]:
@@ -78,7 +74,7 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
                         4 * T[j, i]
                     )
 
-        # 열풍기
+        # 🔥 열풍기 영향
         for h in heaters:
             hx, hy, angle = h["x"], h["y"], h["angle"]
             ca, sa = np.cos(angle), np.sin(angle)
@@ -102,11 +98,11 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
                     w = np.exp(-r / 3) * (proj / r)
                     Tn[j, i] += (HEATER_WATT * DT / C) * w
 
-        # 공기 혼합 (열대류)
+        # 🌪️ 공기 혼합 (열대류)
         T_mean = np.mean(Tn[mask])
         Tn[mask] += MIXING * (T_mean - Tn[mask])
 
-        # 벽체 손실
+        # 🧱 벽체 열손실 (샌드위치 판넬 고정)
         Q_loss = U * wall_area * (T_mean - ext_temp) * DT
         Tn[mask] -= Q_loss / C
 
@@ -186,17 +182,16 @@ if len(st.session_state.space) >= 3:
     for h in heaters:
         hx, hy, a = h["x"], h["y"], h["angle"]
 
-        # 열풍기 아이콘
         fig.add_trace(go.Scatter(
             x=[hx], y=[hy],
             mode="markers",
             marker=dict(size=18, color="red", symbol="triangle-up")
         ))
 
-        # 부채꼴
         spread = np.deg2rad(20)
         r = INFLUENCE_RADIUS * 0.3
         theta = np.linspace(a - spread, a + spread, 30)
+
         fx = [hx] + list(hx + r * np.cos(theta)) + [hx]
         fy = [hy] + list(hy + r * np.sin(theta)) + [hy]
 
@@ -209,7 +204,6 @@ if len(st.session_state.space) >= 3:
             showlegend=False
         ))
 
-        # 짧은 풍향 화살표
         fig.add_trace(go.Scatter(
             x=[hx, hx + r * np.cos(a)],
             y=[hy, hy + r * np.sin(a)],
@@ -224,7 +218,6 @@ if len(st.session_state.space) >= 3:
 # ---------- 3단계 ----------
 st.header("3️⃣ 시뮬레이션 설정")
 
-wall = st.selectbox("벽체 재질", list(WALL_U.keys()))
 height = st.number_input("천장 높이 (m)", value=3.0)
 
 c1, c2 = st.columns(2)
@@ -235,7 +228,6 @@ if st.button("🔥 시뮬레이션 실행"):
     st.session_state.result = run_simulation(
         st.session_state.space,
         heaters,
-        wall,
         height,
         init_temp,
         ext_temp
@@ -276,7 +268,6 @@ if "result" in st.session_state:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # CSV 저장
     rows = []
     for t, T in enumerate(T_hist):
         for i in range(len(x)):
