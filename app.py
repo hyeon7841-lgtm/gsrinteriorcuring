@@ -3,23 +3,17 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from matplotlib.path import Path
-import io
 
 st.set_page_config(layout="wide")
 
 # =========================
-# 상수
+# 기본 상수
 # =========================
-TEMP_MIN, TEMP_MAX = -10, 40
-
-HEATER_KCAL = 17600
-HEATER_WATT = HEATER_KCAL * 1.163
+TEMP_MIN, TEMP_MAX = -10, 45
 INFLUENCE_RADIUS = 10.0
-
-DT = 60
-SIM_HOURS = 9
-ALPHA = 0.03
-MIXING = 0.08
+PREVIEW_RADIUS = INFLUENCE_RADIUS * 0.3
+HEATER_POWER = 18000  # W
+SPREAD_ANGLE = np.deg2rad(40)
 
 WALL_U = {
     "조적벽": 2.0,
@@ -28,7 +22,7 @@ WALL_U = {
 }
 
 # =========================
-# 초기화
+# 유틸
 # =========================
 def reset_all():
     for k in list(st.session_state.keys()):
@@ -37,8 +31,8 @@ def reset_all():
 # =========================
 # 시뮬레이션
 # =========================
-def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
-    pts = np.array(space_pts)
+def run_simulation(space, heaters, wall_u, height, t_init, t_ext):
+    pts = np.array(space)
     xmin, ymin = pts.min(axis=0)
     xmax, ymax = pts.max(axis=0)
 
@@ -47,12 +41,12 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
     y = np.linspace(ymin, ymax, ny)
     X, Y = np.meshgrid(x, y)
 
-    poly = Path(space_pts)
+    poly = Path(space)
     mask = poly.contains_points(
         np.vstack((X.flatten(), Y.flatten())).T
     ).reshape(X.shape)
 
-    T = np.full_like(X, init_temp)
+    T = np.full_like(X, t_init)
     T_hist = []
 
     area = (xmax - xmin) * (ymax - ymin)
@@ -61,48 +55,44 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
 
     rho, cp = 1.2, 1000
     C = rho * cp * area * height
-    U = WALL_U[wall_type]
 
-    steps = int(SIM_HOURS * 3600 / DT)
+    dt = 60
+    steps = int(6 * 3600 / dt)
+    alpha = 0.12
 
     for step in range(steps):
         Tn = T.copy()
 
-        # 확산
+        # 내부 확산 (균질화)
         for i in range(1, nx-1):
             for j in range(1, ny-1):
                 if mask[j, i]:
-                    Tn[j, i] += ALPHA * (
-                        T[j+1,i] + T[j-1,i] + T[j,i+1] + T[j,i-1] - 4*T[j,i]
+                    Tn[j, i] += alpha * (
+                        T[j+1,i] + T[j-1,i] +
+                        T[j,i+1] + T[j,i-1] - 4*T[j,i]
                     )
 
         # 열풍기
         for h in heaters:
-            hx, hy, angle = h["x"], h["y"], h["angle"]
-            ca, sa = np.cos(angle), np.sin(angle)
-
+            hx, hy, ang = h
             for i in range(nx):
                 for j in range(ny):
                     if not mask[j, i]:
                         continue
-                    dx = X[j, i] - hx
-                    dy = Y[j, i] - hy
-                    r = np.hypot(dx, dy)
-                    if r == 0 or r > INFLUENCE_RADIUS:
+                    dx = X[j,i] - hx
+                    dy = Y[j,i] - hy
+                    r = np.sqrt(dx*dx + dy*dy)
+                    if r > INFLUENCE_RADIUS or r == 0:
                         continue
-                    proj = dx*ca + dy*sa
-                    if proj <= 0:
-                        continue
-                    w = np.exp(-r/3) * (proj / r)
-                    Tn[j, i] += (HEATER_WATT * DT / C) * w
+                    a = np.arctan2(dy, dx)
+                    if abs((a - ang + np.pi) % (2*np.pi) - np.pi) < SPREAD_ANGLE/2:
+                        gain = (HEATER_POWER * dt / C) * np.exp(-r/4)
+                        Tn[j,i] += gain
 
-        # 공기 혼합
-        T_mean = np.mean(Tn[mask])
-        Tn[mask] += MIXING * (T_mean - Tn[mask])
-
-        # 벽체 열손실
-        Q_loss = U * wall_area * (T_mean - ext_temp) * DT
-        Tn[mask] -= Q_loss / C
+        # 벽체 손실
+        Tm = np.mean(Tn[mask])
+        loss = wall_u * wall_area * (Tm - t_ext) * dt / C
+        Tn[mask] -= loss
 
         T = np.clip(Tn, TEMP_MIN, TEMP_MAX)
 
@@ -121,184 +111,115 @@ if st.button("🔄 전체 초기화"):
     st.rerun()
 
 # ---------- 1단계 ----------
-st.header("1️⃣ 공간 정의 (실시간 미리보기)")
+st.header("1️⃣ 공간 정의")
+
 if "space" not in st.session_state:
     st.session_state.space = []
 
 c1, c2 = st.columns(2)
-px = c1.number_input("X (m)", format="%.3f")
-py = c2.number_input("Y (m)", format="%.3f")
+with c1:
+    px = st.number_input("X 좌표", format="%.2f")
+with c2:
+    py = st.number_input("Y 좌표", format="%.2f")
 
 if st.button("좌표 추가"):
     st.session_state.space.append((px, py))
 
 if len(st.session_state.space) >= 1:
-    fig = go.Figure()
     xs, ys = zip(*st.session_state.space)
-
+    fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=xs, y=ys,
-        mode="lines+markers",
-        line=dict(width=2),
-        marker=dict(size=6)
+        x=xs, y=ys, mode="lines+markers"
     ))
-
-    if len(st.session_state.space) >= 3:
+    if len(xs) >= 3:
         fig.add_trace(go.Scatter(
             x=list(xs)+[xs[0]],
             y=list(ys)+[ys[0]],
-            mode="lines",
             line=dict(dash="dot")
         ))
-
     fig.update_yaxes(scaleanchor="x")
-    fig.update_layout(height=400)
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------- 2단계 ----------
-st.header("2️⃣ 열풍기 배치 미리보기")
+st.header("2️⃣ 열풍기 설정")
+
 heater_n = st.radio("열풍기 수량", [1, 2], horizontal=True)
 heaters = []
 
 for i in range(heater_n):
-    st.markdown(f"### 🔥 열풍기 {i+1}")
+    st.subheader(f"열풍기 {i+1}")
     c1, c2, c3 = st.columns(3)
-    hx = c1.number_input("X (m)", key=f"hx{i}", format="%.3f")
-    hy = c2.number_input("Y (m)", key=f"hy{i}", format="%.3f")
-    ang = c3.slider("풍향 (°)", -180, 180, 20, key=f"ang{i}")
-    heaters.append({"x": hx, "y": hy, "angle": np.deg2rad(ang)})
+    with c1:
+        hx = st.number_input("X", key=f"x{i}")
+    with c2:
+        hy = st.number_input("Y", key=f"y{i}")
+    with c3:
+        ang = np.deg2rad(st.slider("풍향", -180, 180, 0, key=f"a{i}"))
+    heaters.append((hx, hy, ang))
 
-# 🔍 배치 미리보기
-# 🔍 열풍기 배치 + 풍향 부채꼴 미리보기
+# 미리보기
 if len(st.session_state.space) >= 3:
     fig = go.Figure()
+    xs, ys = zip(*(st.session_state.space+[st.session_state.space[0]]))
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines"))
 
-    # 공간 외곽선
-    sx, sy = zip(*(st.session_state.space + [st.session_state.space[0]]))
-    fig.add_trace(go.Scatter(
-        x=sx, y=sy,
-        mode="lines",
-        line=dict(color="black", width=2),
-        name="공간"
-    ))
-
-    # 열풍기 시각화
-    SPREAD_DEG = 60  # 부채꼴 각도
-    spread = np.deg2rad(SPREAD_DEG)
-
-    for h in heaters:
-        hx, hy, a = h["x"], h["y"], h["angle"]
-
-        # 🔥 열풍기 아이콘 (심플)
+    for hx, hy, a in heaters:
         fig.add_trace(go.Scatter(
             x=[hx], y=[hy],
-            mode="text",
-            text=["🔥"],
-            textfont=dict(size=22),
-            name="열풍기"
+            marker=dict(size=14, symbol="triangle-up"),
+            mode="markers"
         ))
-
-        # 📐 부채꼴 좌표 계산
-        angles = np.linspace(a - spread/2, a + spread/2, 40)
-        fx = [hx]
-        fy = [hy]
-
-        for ang in angles:
-            fx.append(hx + INFLUENCE_RADIUS * np.cos(ang))
-            fy.append(hy + INFLUENCE_RADIUS * np.sin(ang))
-
-        fx.append(hx)
-        fy.append(hy)
-
-        # 🔶 부채꼴 표시
+        angles = np.linspace(a-SPREAD_ANGLE/2, a+SPREAD_ANGLE/2, 40)
+        fx = [hx] + [hx + PREVIEW_RADIUS*np.cos(t) for t in angles] + [hx]
+        fy = [hy] + [hy + PREVIEW_RADIUS*np.sin(t) for t in angles] + [hy]
         fig.add_trace(go.Scatter(
             x=fx, y=fy,
             fill="toself",
-            mode="lines",
-            line=dict(color="orange"),
-            fillcolor="rgba(255,165,0,0.25)",
-            name="열풍기 영향 범위"
-        ))
-
-        # ➤ 짧은 풍향 화살표
-        L = INFLUENCE_RADIUS * 0.25
-        fig.add_trace(go.Scatter(
-            x=[hx, hx + L*np.cos(a)],
-            y=[hy, hy + L*np.sin(a)],
-            mode="lines+markers",
-            line=dict(color="red", width=3),
-            marker=dict(size=6),
+            opacity=0.3,
             showlegend=False
+        ))
+        L = PREVIEW_RADIUS*0.6
+        fig.add_trace(go.Scatter(
+            x=[hx, hx+L*np.cos(a)],
+            y=[hy, hy+L*np.sin(a)],
+            mode="lines"
         ))
 
     fig.update_yaxes(scaleanchor="x")
-    fig.update_layout(
-        height=420,
-        margin=dict(l=10, r=10, t=10, b=10),
-        showlegend=False
-    )
-
     st.plotly_chart(fig, use_container_width=True)
-
 
 # ---------- 3단계 ----------
 st.header("3️⃣ 시뮬레이션 설정")
-wall = st.selectbox("벽체 재질", list(WALL_U.keys()))
+t_init = st.number_input("초기 내부 온도 (°C)", value=10.0)
+t_ext = st.number_input("외부 온도 (°C)", value=0.0)
+wall = st.selectbox("벽체", list(WALL_U.keys()))
 height = st.number_input("천장 높이 (m)", value=3.0)
-
-c1, c2 = st.columns(2)
-init_temp = c1.number_input("시작 내부 온도 (°C)", value=10.0)
-ext_temp = c2.number_input("외부 온도 (°C)", value=0.0)
 
 if st.button("🔥 시뮬레이션 실행"):
     st.session_state.result = run_simulation(
         st.session_state.space,
         heaters,
-        wall,
+        WALL_U[wall],
         height,
-        init_temp,
-        ext_temp
+        t_init,
+        t_ext
     )
 
 # ---------- 결과 ----------
 if "result" in st.session_state:
     T_hist, x, y, mask = st.session_state.result
-
-    frames = []
-    for T in T_hist:
-        frames.append(go.Frame(
-            data=[go.Heatmap(
-                z=T,
-                x=x, y=y,
-                zmin=TEMP_MIN, zmax=TEMP_MAX,
-                colorscale="Turbo",
-                hovertemplate="X: %{x:.1f} m<br>Y: %{y:.1f} m<br>온도: %{z:.1f} °C"
-            )]
+    idx = st.slider("시간 (30분)", 0, len(T_hist)-1)
+    fig = go.Figure(go.Heatmap(
+        z=T_hist[idx],
+        x=x, y=y,
+        zmin=TEMP_MIN, zmax=TEMP_MAX,
+        hovertemplate="X: %{x:.1f}<br>Y: %{y:.1f}<br>온도: %{z:.1f}°C"
+    ))
+    for hx, hy, _ in heaters:
+        fig.add_trace(go.Scatter(
+            x=[hx], y=[hy],
+            marker=dict(size=12, symbol="triangle-up"),
+            mode="markers"
         ))
-
-    fig = go.Figure(data=frames[0].data, frames=frames)
     fig.update_yaxes(scaleanchor="x")
-    fig.update_layout(
-        updatemenus=[{
-            "type": "buttons",
-            "buttons": [{
-                "label": "▶ 재생",
-                "method": "animate",
-                "args": [None, {"frame": {"duration": 300}}]
-            }]
-        }]
-    )
-
     st.plotly_chart(fig, use_container_width=True)
-
-    # CSV
-    rows = []
-    for t, T in enumerate(T_hist):
-        for i in range(len(x)):
-            for j in range(len(y)):
-                if mask[j, i]:
-                    rows.append([t*0.5, x[i], y[j], T[j, i]])
-
-    df = pd.DataFrame(rows, columns=["시간(h)", "X(m)", "Y(m)", "온도(°C)"])
-    csv = df.to_csv(index=False).encode()
-    st.download_button("📥 CSV 다운로드", csv, "heat_simulation.csv")
