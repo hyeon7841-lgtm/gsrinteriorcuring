@@ -224,4 +224,5 @@ if len(st.session_state.space) >= 3:
         return fig
 
     colA.plotly_chart(draw_layout("🔧 수동 배치", manual_heaters), use_container_width=True)
-    colB.plotly_chart(draw_layout("🤖 자동 배치", auto_heaters), use_container_width=T_
+    colB.plotly_chart(draw_layout("🤖 자동 배치", auto_heaters), use_container_width=True)
+
