@@ -130,12 +130,46 @@ with col2:
 if st.button("좌표 추가"):
     st.session_state.space.append((x, y))
 
-if len(st.session_state.space) >= 3:
+st.subheader("📐 현재 공간 미리보기")
+
+if len(st.session_state.space) >= 1:
     fig = go.Figure()
-    xs, ys = zip(*(st.session_state.space + [st.session_state.space[0]]))
-    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers"))
-    fig.update_yaxes(scaleanchor="x")
+
+    xs, ys = zip(*st.session_state.space)
+
+    # 점 & 진행 중인 선
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="lines+markers",
+            name="공간 경계",
+            line=dict(width=2),
+            marker=dict(size=6)
+        )
+    )
+
+    # 3개 이상이면 닫힌 폴리곤도 표시
+    if len(st.session_state.space) >= 3:
+        fig.add_trace(
+            go.Scatter(
+                x=list(xs) + [xs[0]],
+                y=list(ys) + [ys[0]],
+                mode="lines",
+                line=dict(dash="dot"),
+                name="완성 예상"
+            )
+        )
+
+    fig.update_layout(
+        height=400,
+        showlegend=False,
+        margin=dict(l=20, r=20, t=20, b=20)
+    )
+    fig.update_yaxes(scaleanchor="x")  # ✅ 1:1 비율 유지
+
     st.plotly_chart(fig, use_container_width=True)
+
 
 # ---------- 2단계 ----------
 st.header("2️⃣ 열풍기 배치")
