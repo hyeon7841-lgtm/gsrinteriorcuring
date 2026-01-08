@@ -172,14 +172,83 @@ if len(st.session_state.space) >= 1:
 
 
 # ---------- 2단계 ----------
-st.header("2️⃣ 열풍기 배치")
-heater_n = st.radio("열풍기 수", [1, 2])
-heaters = []
+st.header("2️⃣ 열풍기 배치 (m)")
 
+heater_n = st.radio("열풍기 수량", [1, 2], horizontal=True)
+
+heaters = []
 for i in range(heater_n):
-    hx = st.number_input(f"열풍기 {i+1} X", format="%.3f", key=f"hx{i}")
-    hy = st.number_input(f"열풍기 {i+1} Y", format="%.3f", key=f"hy{i}")
+    col1, col2 = st.columns(2)
+    with col1:
+        hx = st.number_input(
+            f"열풍기 {i+1} X 좌표 (m)",
+            format="%.3f",
+            key=f"heater_x_{i}"
+        )
+    with col2:
+        hy = st.number_input(
+            f"열풍기 {i+1} Y 좌표 (m)",
+            format="%.3f",
+            key=f"heater_y_{i}"
+        )
     heaters.append((hx, hy))
+
+# ---------- 미리보기 ----------
+st.subheader("🔥 열풍기 배치 미리보기")
+
+fig = go.Figure()
+
+# 공간 경계
+xs, ys = zip(*(st.session_state.space + [st.session_state.space[0]]))
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys,
+        mode="lines",
+        line=dict(width=2),
+        name="공간"
+    )
+)
+
+# 열풍기 표시
+for i, (hx, hy) in enumerate(heaters):
+    fig.add_trace(
+        go.Scatter(
+            x=[hx],
+            y=[hy],
+            mode="markers",
+            marker=dict(
+                size=14,
+                color="red",
+                symbol="triangle-up"
+            ),
+            name=f"열풍기 {i+1}"
+        )
+    )
+
+    # 풍향 벡터 (20도 고정)
+    L = 1.5  # 표시용 길이 (m)
+    dx = L * np.cos(HEATER_ANGLE)
+    dy = L * np.sin(HEATER_ANGLE)
+
+    fig.add_trace(
+        go.Scatter(
+            x=[hx, hx + dx],
+            y=[hy, hy + dy],
+            mode="lines",
+            line=dict(width=3, color="orange"),
+            showlegend=False
+        )
+    )
+
+fig.update_layout(
+    height=450,
+    margin=dict(l=20, r=20, t=20, b=20),
+    showlegend=False
+)
+fig.update_yaxes(scaleanchor="x")
+
+st.plotly_chart(fig, use_container_width=True)
 
 # ---------- 3단계 ----------
 st.header("3️⃣ 시뮬레이션 설정")
