@@ -169,32 +169,77 @@ for i in range(heater_n):
     heaters.append({"x": hx, "y": hy, "angle": np.deg2rad(ang)})
 
 # 🔍 배치 미리보기
+# 🔍 열풍기 배치 + 풍향 부채꼴 미리보기
 if len(st.session_state.space) >= 3:
     fig = go.Figure()
-    xs, ys = zip(*(st.session_state.space + [st.session_state.space[0]]))
-    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="black")))
+
+    # 공간 외곽선
+    sx, sy = zip(*(st.session_state.space + [st.session_state.space[0]]))
+    fig.add_trace(go.Scatter(
+        x=sx, y=sy,
+        mode="lines",
+        line=dict(color="black", width=2),
+        name="공간"
+    ))
+
+    # 열풍기 시각화
+    SPREAD_DEG = 60  # 부채꼴 각도
+    spread = np.deg2rad(SPREAD_DEG)
 
     for h in heaters:
         hx, hy, a = h["x"], h["y"], h["angle"]
+
+        # 🔥 열풍기 아이콘 (심플)
         fig.add_trace(go.Scatter(
             x=[hx], y=[hy],
-            mode="markers",
-            marker=dict(size=14, color="red", symbol="triangle-up")
+            mode="text",
+            text=["🔥"],
+            textfont=dict(size=22),
+            name="열풍기"
         ))
 
-        # 짧은 풍향 화살표
-        L = INFLUENCE_RADIUS * 0.3
+        # 📐 부채꼴 좌표 계산
+        angles = np.linspace(a - spread/2, a + spread/2, 40)
+        fx = [hx]
+        fy = [hy]
+
+        for ang in angles:
+            fx.append(hx + INFLUENCE_RADIUS * np.cos(ang))
+            fy.append(hy + INFLUENCE_RADIUS * np.sin(ang))
+
+        fx.append(hx)
+        fy.append(hy)
+
+        # 🔶 부채꼴 표시
+        fig.add_trace(go.Scatter(
+            x=fx, y=fy,
+            fill="toself",
+            mode="lines",
+            line=dict(color="orange"),
+            fillcolor="rgba(255,165,0,0.25)",
+            name="열풍기 영향 범위"
+        ))
+
+        # ➤ 짧은 풍향 화살표
+        L = INFLUENCE_RADIUS * 0.25
         fig.add_trace(go.Scatter(
             x=[hx, hx + L*np.cos(a)],
             y=[hy, hy + L*np.sin(a)],
             mode="lines+markers",
-            marker=dict(symbol="arrow", size=10),
-            line=dict(width=3, color="orange")
+            line=dict(color="red", width=3),
+            marker=dict(size=6),
+            showlegend=False
         ))
 
     fig.update_yaxes(scaleanchor="x")
-    fig.update_layout(height=400)
+    fig.update_layout(
+        height=420,
+        margin=dict(l=10, r=10, t=10, b=10),
+        showlegend=False
+    )
+
     st.plotly_chart(fig, use_container_width=True)
+
 
 # ---------- 3단계 ----------
 st.header("3️⃣ 시뮬레이션 설정")
