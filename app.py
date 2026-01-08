@@ -114,7 +114,7 @@ st.title("🔥 난방 열 시뮬레이터")
 
 if st.button("🔄 전체 초기화"):
     reset_all()
-    st.experimental_rerun()
+    st.rerun()
 
 # ---------- 1단계 ----------
 st.header("1️⃣ 공간 정의 (m)")
