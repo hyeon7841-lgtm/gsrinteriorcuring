@@ -13,7 +13,7 @@ TEMP_MIN, TEMP_MAX = -10, 40
 HEATER_KCAL = 17600
 HEATER_WATT = HEATER_KCAL * 1.163
 INFLUENCE_RADIUS = 10.0
-DISPLAY_RADIUS = INFLUENCE_RADIUS * 0.3  # 🔥 시각화용 30%
+DISPLAY_RADIUS = INFLUENCE_RADIUS * 0.3
 
 DT = 60
 SIM_HOURS = 9
@@ -34,27 +34,31 @@ def reset_all():
         del st.session_state[k]
 
 # =========================
-# 자동 배치 알고리즘
+# 자동 배치 (에러 수정 버전)
 # =========================
 def auto_place_heaters(space_pts, heater_n):
     pts = np.array(space_pts)
     center = pts.mean(axis=0)
-
     heaters = []
 
     if heater_n == 1:
-        pos = center
-        angle = np.arctan2(center[1]-pos[1], center[0]-pos[0])
-        heaters.append({"x": pos[0], "y": pos[1], "angle": angle})
-
+        heaters.append({
+            "x": center[0],
+            "y": center[1],
+            "angle": np.deg2rad(20)
+        })
     else:
-        offset = (pts.max(axis=0) - pts.min(axis=0)) * 0.2
-        p1 = center - offset
-        p2 = center + offset
+        span = (pts.max(axis=0) - pts.min(axis=0)) * 0.25
+        p1 = center - span
+        p2 = center + span
 
         for p in [p1, p2]:
             angle = np.arctan2(center[1]-p[1], center[0]-p[0])
-            heaters.append({"x": p[0], "y": p[1], "angle": angle})
+            heaters.append({
+                "x": p[0],
+                "y": p[1],
+                "angle": angle
+            })
 
     return heaters
 
@@ -122,7 +126,7 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
                     w = np.exp(-r/3) * (proj / r)
                     Tn[j,i] += (HEATER_WATT * DT / C) * w
 
-        # 공기 혼합
+        # 공기 혼합 (폐쇄공간 효과)
         T_mean = np.mean(Tn[mask])
         Tn[mask] += MIXING * (T_mean - Tn[mask])
 
@@ -159,7 +163,6 @@ if st.button("좌표 추가"):
     st.session_state.space.append((px, py))
     st.rerun()
 
-# 공간 미리보기
 if len(st.session_state.space) >= 1:
     fig = go.Figure()
     xs, ys = zip(*st.session_state.space)
@@ -186,7 +189,7 @@ auto_heaters = auto_place_heaters(st.session_state.space, heater_n)
 
 # ---------- 배치 비교 ----------
 if len(st.session_state.space) >= 3:
-    st.subheader("🔥 열풍기 배치 비교")
+    st.subheader("🔥 수동 배치 vs 자동 배치")
 
     colA, colB = st.columns(2)
 
@@ -197,15 +200,12 @@ if len(st.session_state.space) >= 3:
 
         for h in heaters:
             hx, hy, a = h["x"], h["y"], h["angle"]
-
-            # 열풍기 아이콘
             fig.add_trace(go.Scatter(
                 x=[hx], y=[hy],
                 mode="markers",
                 marker=dict(size=16, symbol="triangle-up", color="red")
             ))
 
-            # 🔥 부채꼴
             theta = np.linspace(-np.pi/6, np.pi/6, 30)
             fx = hx + DISPLAY_RADIUS * np.cos(theta + a)
             fy = hy + DISPLAY_RADIUS * np.sin(theta + a)
@@ -224,4 +224,4 @@ if len(st.session_state.space) >= 3:
         return fig
 
     colA.plotly_chart(draw_layout("🔧 수동 배치", manual_heaters), use_container_width=True)
-    colB.plotly_chart(draw_layout("🤖 자동 배치", auto_heaters), use_container_width=True)
+    colB.plotly_chart(draw_layout("🤖 자동 배치", auto_heaters), use_container_width=T_
