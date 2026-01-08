@@ -15,13 +15,11 @@ TEMP_MIN, TEMP_MAX = -10, 40
 HEATER_KCAL = 17600
 HEATER_WATT = HEATER_KCAL * 1.163
 INFLUENCE_RADIUS = 10.0
-PREVIEW_RADIUS = INFLUENCE_RADIUS * 0.3
-FAN_SPREAD = np.deg2rad(40)
 
 DT = 60
 SIM_HOURS = 9
 ALPHA = 0.03
-MIXING = 0.08
+MIXING = 0.12   # 🔥 열대류/공기 혼합 강화
 
 WALL_U = {
     "조적벽": 2.0,
@@ -37,7 +35,7 @@ def reset_all():
         del st.session_state[k]
 
 # =========================
-# 시뮬레이션
+# 열 시뮬레이션
 # =========================
 def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
     pts = np.array(space_pts)
@@ -70,15 +68,17 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
     for step in range(steps):
         Tn = T.copy()
 
-        # 확산
-        for i in range(1, nx-1):
-            for j in range(1, ny-1):
+        # 🔁 확산
+        for i in range(1, nx - 1):
+            for j in range(1, ny - 1):
                 if mask[j, i]:
                     Tn[j, i] += ALPHA * (
-                        T[j+1,i] + T[j-1,i] + T[j,i+1] + T[j,i-1] - 4*T[j,i]
+                        T[j+1, i] + T[j-1, i] +
+                        T[j, i+1] + T[j, i-1] -
+                        4 * T[j, i]
                     )
 
-        # 열풍기
+        # 🔥 열풍기
         for h in heaters:
             hx, hy, angle = h["x"], h["y"], h["angle"]
             ca, sa = np.cos(angle), np.sin(angle)
@@ -87,22 +87,26 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
                 for j in range(ny):
                     if not mask[j, i]:
                         continue
+
                     dx = X[j, i] - hx
                     dy = Y[j, i] - hy
                     r = np.hypot(dx, dy)
+
                     if r == 0 or r > INFLUENCE_RADIUS:
                         continue
-                    proj = dx*ca + dy*sa
+
+                    proj = dx * ca + dy * sa
                     if proj <= 0:
                         continue
-                    w = np.exp(-r/3) * (proj / r)
+
+                    w = np.exp(-r / 3) * (proj / r)
                     Tn[j, i] += (HEATER_WATT * DT / C) * w
 
-        # 공기 혼합 (밀폐공간 균질화)
+        # 🌪️ 공기 혼합 (열대류 효과)
         T_mean = np.mean(Tn[mask])
         Tn[mask] += MIXING * (T_mean - Tn[mask])
 
-        # 벽체 열손실
+        # 🧱 벽체 열손실
         Q_loss = U * wall_area * (T_mean - ext_temp) * DT
         Tn[mask] -= Q_loss / C
 
@@ -124,15 +128,17 @@ if st.button("🔄 전체 초기화"):
 
 # ---------- 1단계 ----------
 st.header("1️⃣ 공간 정의 (실시간 미리보기)")
+
 if "space" not in st.session_state:
     st.session_state.space = []
 
 c1, c2 = st.columns(2)
-px = c1.number_input("X (m)", format="%.3f")
-py = c2.number_input("Y (m)", format="%.3f")
+px = c1.number_input("X 좌표 (m)", format="%.3f")
+py = c2.number_input("Y 좌표 (m)", format="%.3f")
 
 if st.button("좌표 추가"):
     st.session_state.space.append((px, py))
+    st.rerun()
 
 if len(st.session_state.space) >= 1:
     fig = go.Figure()
@@ -147,8 +153,8 @@ if len(st.session_state.space) >= 1:
 
     if len(st.session_state.space) >= 3:
         fig.add_trace(go.Scatter(
-            x=list(xs)+[xs[0]],
-            y=list(ys)+[ys[0]],
+            x=list(xs) + [xs[0]],
+            y=list(ys) + [ys[0]],
             mode="lines",
             line=dict(dash="dot")
         ))
@@ -158,15 +164,16 @@ if len(st.session_state.space) >= 1:
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------- 2단계 ----------
-st.header("2️⃣ 열풍기 배치 미리보기")
+st.header("2️⃣ 열풍기 배치")
+
 heater_n = st.radio("열풍기 수량", [1, 2], horizontal=True)
 heaters = []
 
 for i in range(heater_n):
     st.markdown(f"### 🔥 열풍기 {i+1}")
     c1, c2, c3 = st.columns(3)
-    hx = c1.number_input("X (m)", key=f"hx{i}", format="%.3f")
-    hy = c2.number_input("Y (m)", key=f"hy{i}", format="%.3f")
+    hx = c1.number_input("X (m)", format="%.3f", key=f"hx{i}")
+    hy = c2.number_input("Y (m)", format="%.3f", key=f"hy{i}")
     ang = c3.slider("풍향 (°)", -180, 180, 20, key=f"ang{i}")
     heaters.append({"x": hx, "y": hy, "angle": np.deg2rad(ang)})
 
@@ -179,34 +186,18 @@ if len(st.session_state.space) >= 3:
     for h in heaters:
         hx, hy, a = h["x"], h["y"], h["angle"]
 
-        # 열풍기 아이콘
         fig.add_trace(go.Scatter(
             x=[hx], y=[hy],
             mode="markers",
             marker=dict(size=16, color="red", symbol="triangle-up")
         ))
 
-        # 부채꼴 영향 영역 (30%)
-        theta = np.linspace(a - FAN_SPREAD/2, a + FAN_SPREAD/2, 40)
-        fx = [hx] + [hx + PREVIEW_RADIUS*np.cos(t) for t in theta] + [hx]
-        fy = [hy] + [hy + PREVIEW_RADIUS*np.sin(t) for t in theta] + [hy]
-
-        fig.add_trace(go.Scatter(
-            x=fx, y=fy,
-            fill="toself",
-            fillcolor="rgba(255,0,0,0.2)",
-            line=dict(color="rgba(255,0,0,0.3)"),
-            showlegend=False
-        ))
-
-        # 짧은 풍향 화살표
-        L = PREVIEW_RADIUS * 0.7
+        L = INFLUENCE_RADIUS * 0.3
         fig.add_trace(go.Scatter(
             x=[hx, hx + L*np.cos(a)],
             y=[hy, hy + L*np.sin(a)],
             mode="lines",
-            line=dict(width=3, color="orange"),
-            showlegend=False
+            line=dict(width=3, color="orange")
         ))
 
     fig.update_yaxes(scaleanchor="x")
@@ -215,6 +206,7 @@ if len(st.session_state.space) >= 3:
 
 # ---------- 3단계 ----------
 st.header("3️⃣ 시뮬레이션 설정")
+
 wall = st.selectbox("벽체 재질", list(WALL_U.keys()))
 height = st.number_input("천장 높이 (m)", value=3.0)
 
@@ -244,7 +236,11 @@ if "result" in st.session_state:
                 x=x, y=y,
                 zmin=TEMP_MIN, zmax=TEMP_MAX,
                 colorscale="Turbo",
-                hovertemplate="X: %{x:.1f} m<br>Y: %{y:.1f} m<br>온도: %{z:.1f} °C"
+                hovertemplate=(
+                    "X: %{x:.1f} m<br>"
+                    "Y: %{y:.1f} m<br>"
+                    "온도: %{z:.1f} °C"
+                )
             )]
         ))
 
@@ -263,7 +259,7 @@ if "result" in st.session_state:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # CSV
+    # CSV 저장
     rows = []
     for t, T in enumerate(T_hist):
         for i in range(len(x)):
