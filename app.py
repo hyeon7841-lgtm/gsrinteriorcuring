@@ -68,7 +68,7 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
     for step in range(steps):
         Tn = T.copy()
 
-        # 🔁 확산
+        # 확산
         for i in range(1, nx - 1):
             for j in range(1, ny - 1):
                 if mask[j, i]:
@@ -78,7 +78,7 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
                         4 * T[j, i]
                     )
 
-        # 🔥 열풍기
+        # 열풍기
         for h in heaters:
             hx, hy, angle = h["x"], h["y"], h["angle"]
             ca, sa = np.cos(angle), np.sin(angle)
@@ -102,11 +102,11 @@ def run_simulation(space_pts, heaters, wall_type, height, init_temp, ext_temp):
                     w = np.exp(-r / 3) * (proj / r)
                     Tn[j, i] += (HEATER_WATT * DT / C) * w
 
-        # 🌪️ 공기 혼합 (열대류 효과)
+        # 공기 혼합 (열대류)
         T_mean = np.mean(Tn[mask])
         Tn[mask] += MIXING * (T_mean - Tn[mask])
 
-        # 🧱 벽체 열손실
+        # 벽체 손실
         Q_loss = U * wall_area * (T_mean - ext_temp) * DT
         Tn[mask] -= Q_loss / C
 
@@ -164,7 +164,7 @@ if len(st.session_state.space) >= 1:
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------- 2단계 ----------
-st.header("2️⃣ 열풍기 배치")
+st.header("2️⃣ 열풍기 배치 (부채꼴 시각화)")
 
 heater_n = st.radio("열풍기 수량", [1, 2], horizontal=True)
 heaters = []
@@ -177,7 +177,7 @@ for i in range(heater_n):
     ang = c3.slider("풍향 (°)", -180, 180, 20, key=f"ang{i}")
     heaters.append({"x": hx, "y": hy, "angle": np.deg2rad(ang)})
 
-# 🔍 배치 미리보기
+# 🔍 배치 미리보기 (부채꼴)
 if len(st.session_state.space) >= 3:
     fig = go.Figure()
     xs, ys = zip(*(st.session_state.space + [st.session_state.space[0]]))
@@ -186,22 +186,39 @@ if len(st.session_state.space) >= 3:
     for h in heaters:
         hx, hy, a = h["x"], h["y"], h["angle"]
 
+        # 열풍기 아이콘
         fig.add_trace(go.Scatter(
             x=[hx], y=[hy],
             mode="markers",
-            marker=dict(size=16, color="red", symbol="triangle-up")
+            marker=dict(size=18, color="red", symbol="triangle-up")
         ))
 
-        L = INFLUENCE_RADIUS * 0.3
+        # 부채꼴
+        spread = np.deg2rad(20)
+        r = INFLUENCE_RADIUS * 0.3
+        theta = np.linspace(a - spread, a + spread, 30)
+        fx = [hx] + list(hx + r * np.cos(theta)) + [hx]
+        fy = [hy] + list(hy + r * np.sin(theta)) + [hy]
+
         fig.add_trace(go.Scatter(
-            x=[hx, hx + L*np.cos(a)],
-            y=[hy, hy + L*np.sin(a)],
+            x=fx, y=fy,
+            fill="toself",
+            mode="lines",
+            fillcolor="rgba(255,0,0,0.2)",
+            line=dict(color="rgba(255,0,0,0.4)"),
+            showlegend=False
+        ))
+
+        # 짧은 풍향 화살표
+        fig.add_trace(go.Scatter(
+            x=[hx, hx + r * np.cos(a)],
+            y=[hy, hy + r * np.sin(a)],
             mode="lines",
             line=dict(width=3, color="orange")
         ))
 
     fig.update_yaxes(scaleanchor="x")
-    fig.update_layout(height=400)
+    fig.update_layout(height=420)
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------- 3단계 ----------
@@ -265,7 +282,7 @@ if "result" in st.session_state:
         for i in range(len(x)):
             for j in range(len(y)):
                 if mask[j, i]:
-                    rows.append([t*0.5, x[i], y[j], T[j, i]])
+                    rows.append([t * 0.5, x[i], y[j], T[j, i]])
 
     df = pd.DataFrame(rows, columns=["시간(h)", "X(m)", "Y(m)", "온도(°C)"])
     csv = df.to_csv(index=False).encode()
