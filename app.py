@@ -287,4 +287,91 @@ def run_parametric(height, init_temp, ext_temp):
 
     results = []
 
-    for p in
+    for p in range(10, 51):  # 10평 ~ 50평
+        area = p * 3.3058
+        L = np.sqrt(area)
+
+        # 정사각형 공간 생성
+        space = [
+            (0, 0),
+            (L, 0),
+            (L, L),
+            (0, L)
+        ]
+
+        # =====================
+        # 1대 배치 (중앙)
+        # =====================
+        heaters_1 = [{
+            "x": L/2,
+            "y": L/2,
+            "angle": np.deg2rad(45)
+        }]
+
+        T_hist, _, _, mask = run_simulation(
+            space, heaters_1, height, init_temp, ext_temp
+        )
+
+        T_final = T_hist[-1]
+        max1 = np.max(T_final[mask])
+        min1 = np.min(T_final[mask])
+
+        # =====================
+        # 2대 배치 (양쪽 → 중앙 향함)
+        # =====================
+        heaters_2 = [
+            {
+                "x": L * 0.25,
+                "y": L / 2,
+                "angle": 0  # 오른쪽 →
+            },
+            {
+                "x": L * 0.75,
+                "y": L / 2,
+                "angle": np.pi  # 왼쪽 ←
+            }
+        ]
+
+        T_hist, _, _, mask = run_simulation(
+            space, heaters_2, height, init_temp, ext_temp
+        )
+
+        T_final = T_hist[-1]
+        max2 = np.max(T_final[mask])
+        min2 = np.min(T_final[mask])
+
+        # 결과 저장
+        results.append([
+            p,
+            round(max1, 2),
+            round(min1, 2),
+            round(max2, 2),
+            round(min2, 2)
+        ])
+
+    df = pd.DataFrame(
+        results,
+        columns=[
+            "평수",
+            "1대 최고온도",
+            "1대 최저온도",
+            "2대 최고온도",
+            "2대 최저온도"
+        ]
+    )
+
+    return df
+
+st.header("📊 파라메트릭 분석")
+
+if st.button("📈 평수별 자동 분석 실행"):
+    df_param = run_parametric(height, init_temp, ext_temp)
+
+    st.dataframe(df_param)
+
+    csv = df_param.to_csv(index=False).encode()
+    st.download_button(
+        "📥 엑셀 다운로드",
+        csv,
+        "parametric_heat_analysis.csv"
+    )
