@@ -313,8 +313,11 @@ def run_parametric(height, init_temp, ext_temp):
 
         T_all = np.array(T_hist)
 
-        max1 = np.max(T_all[:, mask])
-        min1 = np.min(T_all[:, mask])
+        # ✅ 1시간 이후만 사용
+        T_filtered = T_all[2:]
+
+        max1 = np.max(T_filtered[:, mask])
+        min1 = np.min(T_filtered[:, mask])
 
         # -----------------
         # 2대
@@ -330,8 +333,11 @@ def run_parametric(height, init_temp, ext_temp):
 
         T_all = np.array(T_hist)
 
-        max2 = np.max(T_all[:, mask])
-        min2 = np.min(T_all[:, mask])
+        # ✅ 동일 적용
+        T_filtered = T_all[2:]
+
+        max2 = np.max(T_filtered[:, mask])
+        min2 = np.min(T_filtered[:, mask])
 
         results.append([
             p,
@@ -345,10 +351,10 @@ def run_parametric(height, init_temp, ext_temp):
         results,
         columns=[
             "평수",
-            "1대 최고온도(전체시간)",
-            "1대 최저온도(전체시간)",
-            "2대 최고온도(전체시간)",
-            "2대 최저온도(전체시간)"
+            "1대 최고온도(1시간 이후)",
+            "1대 최저온도(1시간 이후)",
+            "2대 최고온도(1시간 이후)",
+            "2대 최저온도(1시간 이후)"
         ]
     )
 
