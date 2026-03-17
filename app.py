@@ -108,7 +108,7 @@ def run_simulation(space_pts, heaters, height, init_temp, ext_temp):
 
         T = np.clip(Tn, TEMP_MIN, TEMP_MAX)
 
-        if step % 30 == 0:
+        if step % 60 == 0:
             T_hist.append(T.copy())
 
     return T_hist, x, y, mask
