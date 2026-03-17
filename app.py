@@ -278,3 +278,13 @@ if "result" in st.session_state:
     df = pd.DataFrame(rows, columns=["시간(h)", "X(m)", "Y(m)", "온도(°C)"])
     csv = df.to_csv(index=False).encode()
     st.download_button("📥 CSV 다운로드", csv, "heat_simulation.csv")
+
+# =========================
+# 파라메트릭 시뮬레이션
+# =========================
+
+def run_parametric(height, init_temp, ext_temp):
+
+    results = []
+
+    for p in
