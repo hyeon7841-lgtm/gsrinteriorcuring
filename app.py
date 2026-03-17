@@ -299,35 +299,33 @@ def run_parametric(height, init_temp, ext_temp):
         ]
 
         # -----------------
-        # 1대
-        # -----------------
-        heaters_1 = [{
-            "x": L/2,
-            "y": L/2,
-            "angle": np.deg2rad(45)
-        }]
+# 1대
+# -----------------
+heaters_1 = [{
+    "x": L/2,
+    "y": L/2,
+    "angle": np.deg2rad(45)
+}]
 
-        T_hist, _, _, mask = run_simulation(
-            space, heaters_1, height, init_temp, ext_temp
-        )
+T_hist, _, _, mask = run_simulation(
+    space, heaters_1, height, init_temp, ext_temp
+)
 
-        T_all = np.array(T_hist)
+T_all = np.array(T_hist)
+T_filtered = T_all[2:]
 
-        # ✅ 1시간 이후만 사용
-        T_filtered = T_all[2:]
+max1 = np.max(T_filtered[:, mask])
+min1 = np.min(T_filtered[:, mask])
 
-        max1 = np.max(T_filtered[:, mask])
-        min1 = np.min(T_filtered[:, mask])
-        # ✅ 양생 판정
 safe1 = "" if min1 >= 5 else "X"
 
-        # -----------------
-        # 2대
-        # -----------------
-        heaters_2 = [
-            {"x": L*0.25, "y": L/2, "angle": 0},
-            {"x": L*0.75, "y": L/2, "angle": np.pi}
-        ]
+# -----------------
+# 2대  ← ✅ 여기 들여쓰기 동일해야 함
+# -----------------
+heaters_2 = [
+    {"x": L*0.25, "y": L/2, "angle": 0},
+    {"x": L*0.75, "y": L/2, "angle": np.pi}
+]
 
         T_hist, _, _, mask = run_simulation(
             space, heaters_2, height, init_temp, ext_temp
