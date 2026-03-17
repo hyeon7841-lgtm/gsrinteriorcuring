@@ -318,6 +318,7 @@ def run_parametric(height, init_temp, ext_temp):
 
         max1 = np.max(T_filtered[:, mask])
         min1 = np.min(T_filtered[:, mask])
+        safe1 = min1 >= 5
 
         # -----------------
         # 2대
@@ -338,6 +339,7 @@ def run_parametric(height, init_temp, ext_temp):
 
         max2 = np.max(T_filtered[:, mask])
         min2 = np.min(T_filtered[:, mask])
+        safe2 = min2 >= 5
 
         results.append([
             p,
@@ -345,16 +347,19 @@ def run_parametric(height, init_temp, ext_temp):
             round(min1, 2),
             round(max2, 2),
             round(min2, 2)
+            safe2
         ])
 
     df = pd.DataFrame(
         results,
         columns=[
             "평수",
-            "1대 최고온도(1시간 이후)",
-            "1대 최저온도(1시간 이후)",
-            "2대 최고온도(1시간 이후)",
-            "2대 최저온도(1시간 이후)"
+            "1대 최고온도",
+            "1대 최저온도",
+            "1대 양생가능",
+            "2대 최고온도",
+            "2대 최저온도"
+            "2대 양생가능"
         ]
     )
 
