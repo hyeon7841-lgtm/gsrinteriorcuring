@@ -346,7 +346,7 @@ def run_parametric(height, init_temp, ext_temp):
             round(max1, 2),
             round(min1, 2),
             round(max2, 2),
-            round(min2, 2)
+            round(min2, 2),
             safe2
         ])
 
