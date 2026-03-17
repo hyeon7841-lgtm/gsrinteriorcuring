@@ -287,11 +287,10 @@ def run_parametric(height, init_temp, ext_temp):
 
     results = []
 
-    for p in range(10, 51):  # 10평 ~ 50평
+    for p in range(10, 51):
         area = p * 3.3058
         L = np.sqrt(area)
 
-        # 정사각형 공간 생성
         space = [
             (0, 0),
             (L, 0),
@@ -299,9 +298,9 @@ def run_parametric(height, init_temp, ext_temp):
             (0, L)
         ]
 
-        # =====================
-        # 1대 배치 (중앙)
-        # =====================
+        # -----------------
+        # 1대
+        # -----------------
         heaters_1 = [{
             "x": L/2,
             "y": L/2,
@@ -312,35 +311,28 @@ def run_parametric(height, init_temp, ext_temp):
             space, heaters_1, height, init_temp, ext_temp
         )
 
-        T_final = T_hist[-1]
-        max1 = np.max(T_final[mask])
-        min1 = np.min(T_final[mask])
+        T_all = np.array(T_hist)
 
-        # =====================
-        # 2대 배치 (양쪽 → 중앙 향함)
-        # =====================
+        max1 = np.max(T_all[:, mask])
+        min1 = np.min(T_all[:, mask])
+
+        # -----------------
+        # 2대
+        # -----------------
         heaters_2 = [
-            {
-                "x": L * 0.25,
-                "y": L / 2,
-                "angle": 0  # 오른쪽 →
-            },
-            {
-                "x": L * 0.75,
-                "y": L / 2,
-                "angle": np.pi  # 왼쪽 ←
-            }
+            {"x": L*0.25, "y": L/2, "angle": 0},
+            {"x": L*0.75, "y": L/2, "angle": np.pi}
         ]
 
         T_hist, _, _, mask = run_simulation(
             space, heaters_2, height, init_temp, ext_temp
         )
 
-        T_final = T_hist[-1]
-        max2 = np.max(T_final[mask])
-        min2 = np.min(T_final[mask])
+        T_all = np.array(T_hist)
 
-        # 결과 저장
+        max2 = np.max(T_all[:, mask])
+        min2 = np.min(T_all[:, mask])
+
         results.append([
             p,
             round(max1, 2),
@@ -353,10 +345,10 @@ def run_parametric(height, init_temp, ext_temp):
         results,
         columns=[
             "평수",
-            "1대 최고온도",
-            "1대 최저온도",
-            "2대 최고온도",
-            "2대 최저온도"
+            "1대 최고온도(전체시간)",
+            "1대 최저온도(전체시간)",
+            "2대 최고온도(전체시간)",
+            "2대 최저온도(전체시간)"
         ]
     )
 
